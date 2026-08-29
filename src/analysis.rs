@@ -12,7 +12,7 @@ fn percentile(values: &[u32], percentile: f64) -> Option<u32> {
     }
     let one_based_rank = (len as f64 * percentile).ceil();
     let index = (one_based_rank - 1_f64) as usize;
-    return Some(values[index]);
+    Some(values[index])
 }
 pub struct PercentileStats {
     pub p50: Option<u32>,
@@ -242,5 +242,142 @@ pub fn analyze(requests: &ParseResult, price_table: &PricingTable) -> AnalysisRe
         parse_stats: ParseStats {
             invalid_records: requests.errors.len() as u64,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::input::parse_pricing_model;
+
+    #[test]
+    fn percentile_basic() {
+        let values = vec![1, 2, 3, 4, 100];
+
+        assert_eq!(percentile(&values, 0.5), Some(3));
+        assert_eq!(percentile(&values, 0.95), Some(100));
+        assert_eq!(percentile(&values, 0.99), Some(100));
+        assert_eq!(percentile(&values, 0.2), Some(1));
+    }
+
+    #[test]
+    fn percentile_invalid_input() {
+        let values = vec![1, 2, 3, 4, 100];
+        assert_eq!(percentile(&values, 0.0), None);
+        assert_eq!(percentile(&values, -1.0), None);
+        assert_eq!(percentile(&values, 1.5), None);
+        let values: Vec<u32> = vec![];
+        assert_eq!(percentile(&values, 0.5), None);
+    }
+
+    #[test]
+    fn latency_accumulator_basic() {
+        let values: [u32; 6] = [10, 5, 3, 100, 44, 99];
+        let mut accumulator = LatencyAccumulator::new();
+        for value in values {
+            accumulator.update(value);
+        }
+        let result = accumulator.finish();
+        assert_eq!(result.min, Some(3));
+        assert_eq!(result.max, Some(100));
+        assert_eq!(result.percentiles.p50, Some(10));
+        assert_eq!(result.percentiles.p95, Some(100));
+        assert_eq!(result.percentiles.p99, Some(100));
+        let expected = 43.5;
+        let actual = result.avg.unwrap();
+        assert!((actual - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn latency_accumulator_empty() {
+        let accumulator = LatencyAccumulator::new();
+        let result = accumulator.finish();
+
+        assert_eq!(result.min, None);
+        assert_eq!(result.max, None);
+        assert_eq!(result.avg, None);
+        assert_eq!(result.percentiles.p50, None);
+        assert_eq!(result.percentiles.p95, None);
+        assert_eq!(result.percentiles.p99, None);
+    }
+
+    #[test]
+    fn token_accumulator_basic() {
+        let mut accumulator = TokenAccumulator::new();
+
+        accumulator.update(100, 50);
+        accumulator.update(200, 75);
+
+        let result = accumulator.finish();
+
+        assert_eq!(result.input_total, 300);
+        assert_eq!(result.output_total, 125);
+    }
+
+    #[test]
+    fn token_accumulator_empty() {
+        let accumulator = TokenAccumulator::new();
+        let result = accumulator.finish();
+
+        assert_eq!(result.input_total, 0);
+        assert_eq!(result.output_total, 0);
+    }
+
+    #[test]
+    fn request_stats_accumulator_basic() {
+        let mut accumulator = RequestStatsAccumulator::new();
+
+        accumulator.update(&Status::Ok);
+        accumulator.update(&Status::Ok);
+        accumulator.update(&Status::Cancelled);
+        accumulator.update(&Status::RateLimited);
+        accumulator.update(&Status::Ok);
+        accumulator.update(&Status::Timeout);
+
+        let result = accumulator.finish();
+
+        assert_eq!(result.successful, 3);
+        assert_eq!(result.failed, 3);
+        assert_eq!(result.total, 6);
+    }
+
+    #[test]
+    fn request_stats_accumulator_empty() {
+        let accumulator = RequestStatsAccumulator::new();
+        let result = accumulator.finish();
+
+        assert_eq!(result.successful, 0);
+        assert_eq!(result.failed, 0);
+        assert_eq!(result.total, 0);
+    }
+
+    #[test]
+    fn cost_accumulator() {
+        let pricing_table = parse_pricing_model("./data/test/valid_pricing.json").unwrap();
+
+        let mut accumulator = CostAccumulator::new(&pricing_table);
+
+        accumulator.update("gpt-5", 2_000_000, 3_000_000);
+        accumulator.update("claude-sonnet-5", 3_000_000, 1_000_000);
+        accumulator.update("unknown-model-a", 2_000_000, 1_000_000);
+        accumulator.update("unknown-model-b", 2_000_000, 1_000_000);
+
+        let result = accumulator.finish();
+
+        let expected = 56.5;
+        let actual = result.known_cost;
+        assert!((actual - expected).abs() < 1e-10);
+        assert_eq!(result.unknown_pricing_requests, 2);
+    }
+    #[test]
+    fn cost_accumulator_empty() {
+        let pricing_table = parse_pricing_model("./data/test/valid_pricing.json").unwrap();
+
+        let accumulator = CostAccumulator::new(&pricing_table);
+        let result = accumulator.finish();
+
+        assert_eq!(result.known_cost, 0.0);
+        assert_eq!(result.unknown_pricing_requests, 0);
     }
 }
