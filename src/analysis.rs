@@ -14,44 +14,44 @@ fn percentile(values: &[u32], percentile: f64) -> Option<u32> {
     let index = (one_based_rank - 1_f64) as usize;
     return Some(values[index]);
 }
-struct PercentileStats {
-    p50: Option<u32>,
-    p95: Option<u32>,
-    p99: Option<u32>,
+pub struct PercentileStats {
+    pub p50: Option<u32>,
+    pub p95: Option<u32>,
+    pub p99: Option<u32>,
 }
-struct LatencyStats {
-    min: Option<u32>,
-    max: Option<u32>,
-    avg: Option<f64>,
-    percentiles: PercentileStats,
-}
-
-struct TokenStats {
-    input_total: u64,
-    output_total: u64,
+pub struct LatencyStats {
+    pub min: Option<u32>,
+    pub max: Option<u32>,
+    pub avg: Option<f64>,
+    pub percentiles: PercentileStats,
 }
 
-struct CostStats {
-    known_cost: f64,
-    unknown_pricing_requests: u64,
+pub struct TokenStats {
+    pub input_total: u64,
+    pub output_total: u64,
 }
 
-struct RequestStats {
-    successful: u64,
-    failed: u64,
-    total: u64,
+pub struct CostStats {
+    pub known_cost: f64,
+    pub unknown_pricing_requests: u64,
 }
 
-struct ParseStats {
-    invalid_records: u64,
+pub struct RequestStats {
+    pub successful: u64,
+    pub failed: u64,
+    pub total: u64,
+}
+
+pub struct ParseStats {
+    pub invalid_records: u64,
 }
 
 pub struct AnalysisResult {
-    latency_stats: LatencyStats,
-    token_stats: TokenStats,
-    cost_stats: CostStats,
-    request_stats: RequestStats,
-    parse_stats: ParseStats,
+    pub latency_stats: LatencyStats,
+    pub token_stats: TokenStats,
+    pub cost_stats: CostStats,
+    pub request_stats: RequestStats,
+    pub parse_stats: ParseStats,
 }
 
 struct LatencyAccumulator {

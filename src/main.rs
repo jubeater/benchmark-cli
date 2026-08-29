@@ -1,9 +1,11 @@
 mod analysis;
 mod input;
 mod model;
+mod report;
 
-use analysis::{AnalysisResult, analyze};
+use analysis::analyze;
 use input::{parse_lines, parse_pricing_model};
+use report::render;
 
 fn main() {
     let price_table = parse_pricing_model("./data/pricing.json");
@@ -13,7 +15,8 @@ fn main() {
             match requests {
                 Ok(result) => {
                     let analysis_result = analyze(&result, &table);
-                    print!("done!");
+                    let output_string = render(&analysis_result);
+                    print!("{}", output_string);
                 }
                 Err(e) => print!("io err happened!{:?}", e),
             }
