@@ -1,0 +1,9 @@
+{"timestamp":"2026-08-27T12:00:01Z","model":"gpt-5","latency_ms":182,"input_tokens":1200,"output_tokens":350,"status":"ok"}
+{"timestamp":"2026-08-27T12:00:02Z","model":"gpt-5","latency_ms":200,"input_tokens":1000,"output_tokens":300,"status":"banana"}
+{"timestamp":"2026-08-27T12:00:03Z","model":"gpt-5.6","latency_ms":150,"input_tokens":800,"output_tokens":200,"status":"rate_limited"}
+{"timestamp":"2026-08-27T12:00:01Z","model":"gpt-5","latency_ms":182,"input_tokens":1200,"output_tokens":350,"status":"ok"}
+{"timestamp":"2026-08-27T12:00:03Z","model":"gpt-5.6","latency_ms":150,"input_tokens":800,"output_tokens":200,"status":"rate_limited"}
+{"timestamp":"2026-08-27T12:00:01Z","model":"gpt-5","latency_ms":182,"input_tokens":1200,"output_tokens":350,"status":"ok"}
+{"timestamp":"2026-08-27T12:00:03Z","model":"gpt-5.6","latency_ms":150,"input_tokens":800,"output_tokens":200,"status":"rate_limited"}
+{"timestamp":"2026-08-27T12:00:01Z","model":"gpt-5","latency_ms":182,"input_tokens":1200,"output_tokens":350,"status":"ok"}
+{"timestamp":"2026-08-27T12:00:03Z","model":"gpt-5.6","latency_ms":150,"input_tokens":800,"output_tokens":200,"status":"rate_limited"}
