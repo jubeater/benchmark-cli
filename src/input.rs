@@ -1,11 +1,20 @@
 use crate::model::{Pricing, Request};
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 
 #[derive(Debug)]
 pub enum SourceError {
     SerdeJsonError(serde_json::Error),
+}
+
+impl Display for SourceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SourceError::SerdeJsonError(e) => write!(f, "{e}"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -17,14 +26,28 @@ pub struct ParseResult {
 #[derive(Debug)]
 pub struct ParseError {
     pub line_number: usize,
-    pub raw_input: String,
     pub source_error: SourceError,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "line {}: {}", self.line_number, self.source_error)
+    }
 }
 
 #[derive(Debug)]
 pub enum PricingLoadError {
     Io(io::Error),
     Json(serde_json::Error),
+}
+
+impl Display for PricingLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PricingLoadError::Io(e) => write!(f, "{}", e),
+            PricingLoadError::Json(e) => write!(f, "{}", e),
+        }
+    }
 }
 
 impl From<io::Error> for PricingLoadError {
@@ -46,7 +69,6 @@ pub fn parse_line(line: &str, line_number: usize) -> Result<Request, ParseError>
         Ok(request) => Ok(request),
         Err(e) => Err(ParseError {
             line_number,
-            raw_input: line.to_string(),
             source_error: SourceError::SerdeJsonError(e),
         }),
     }
@@ -134,7 +156,6 @@ mod tests {
             err_result.source_error,
             SourceError::SerdeJsonError(_)
         ));
-        assert_eq!(err_result.raw_input, json_input);
     }
 
     #[test]
