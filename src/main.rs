@@ -2,32 +2,26 @@ mod analysis;
 mod input;
 mod model;
 mod report;
+mod validator;
 
 use analysis::analyze;
 use clap::Parser;
-use input::{parse_lines, parse_pricing_model};
+use input::parse_lines;
 use report::render;
 use std::fmt::{self, Display};
 use std::io;
 
-use crate::input::PricingLoadError;
-
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    /// Path to the JSONL request log
+    /// Path to the JSONL input
     #[arg(short, long)]
     input: String,
-
-    /// Path to the pricing JSON
-    #[arg(short, long)]
-    pricing: String,
 }
 
 #[derive(Debug)]
 enum AppError {
     Input(io::Error),
-    Pricing(PricingLoadError),
 }
 
 impl Display for AppError {
@@ -35,9 +29,6 @@ impl Display for AppError {
         match self {
             AppError::Input(e) => {
                 write!(f, "failed to load input file: {}", e)
-            }
-            AppError::Pricing(e) => {
-                write!(f, "failed to load pricing file: {}", e)
             }
         }
     }
@@ -49,20 +40,13 @@ impl From<io::Error> for AppError {
     }
 }
 
-impl From<PricingLoadError> for AppError {
-    fn from(value: PricingLoadError) -> Self {
-        AppError::Pricing(value)
-    }
-}
-
 fn run(args: Args) -> Result<(), AppError> {
     let parsed_result = parse_lines(&args.input)?;
     for error in &parsed_result.errors {
         eprintln!("Warning: {error}");
     }
-    let pricing_table = parse_pricing_model(&args.pricing)?;
 
-    let analysis_result = analyze(&parsed_result, &pricing_table);
+    let analysis_result = analyze(&parsed_result, &());
     let output_string = render(&analysis_result);
     print!("{}", output_string);
 
