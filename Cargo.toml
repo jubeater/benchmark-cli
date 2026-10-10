@@ -3,6 +3,9 @@ name = "AI-log-analysis"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "benchmark_cli"
+
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }

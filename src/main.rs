@@ -1,20 +1,14 @@
-mod analysis;
-mod input;
-mod model;
-mod report;
-mod validator;
-
-use analysis::analyze;
+use benchmark_cli::input::parse_lines;
+use benchmark_cli::report::render;
+use benchmark_cli::validator::validate_record;
 use clap::Parser;
-use input::parse_lines;
-use report::render;
 use std::fmt::{self, Display};
 use std::io;
 
 #[derive(Parser, Debug)]
-#[command(version, about)]
+#[command(version, about = "Validate eval-schema v2 JSONL results")]
 struct Args {
-    /// Path to the JSONL input
+    /// Path to the eval-schema v2 JSONL results
     #[arg(short, long)]
     input: String,
 }
@@ -46,8 +40,19 @@ fn run(args: Args) -> Result<(), AppError> {
         eprintln!("Warning: {error}");
     }
 
-    let analysis_result = analyze(&parsed_result, &());
-    let output_string = render(&analysis_result);
+    let mut accepted = 0;
+    let mut rejected = parsed_result.errors.len();
+    for record in parsed_result.records {
+        match validate_record(record) {
+            Ok(_) => accepted += 1,
+            Err(error) => {
+                rejected += 1;
+                eprintln!("Warning: line {}: {:?}", error.line, error.error_type);
+            }
+        }
+    }
+
+    let output_string = render(accepted, rejected);
     print!("{}", output_string);
 
     Ok(())

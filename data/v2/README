@@ -1,0 +1,15 @@
+valid.jsonl — 3 accepted records, 0 rejected records, exit code 0.
+
+Line 1: core fields, integer seed, optional blocks absent.
+Line 2: core fields and every optional block populated, including model quantization;
+        the time unit has an env block.
+Line 3: null seed and optional blocks, status oom with null value. An unsuccessful
+        measurement is accepted when its record conforms to the schema.
+
+mixed.jsonl — 1 accepted record, 2 rejected records.
+
+Line 1: valid record with status oom and null value.
+Line 2: an empty object, rejected by schema validation for missing core fields.
+Line 3: malformed JSON, rejected by input parsing.
+Rejection counts include both validation and parsing failures. Detailed field
+diagnostics and failure exit codes are deferred to ticket #2.

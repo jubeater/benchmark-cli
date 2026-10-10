@@ -85,18 +85,22 @@ mod tests {
 
     #[test]
     fn parse_line_valid_json() {
-        let json_input = r#"{"model":"gpt-5","status":"not_yet_validated"}"#;
+        let json_input = include_str!("../data/v2/valid.jsonl")
+            .lines()
+            .next()
+            .unwrap();
 
         let result = parse_line(json_input, 3).unwrap();
 
         assert_eq!(result.line, 3);
-        assert_eq!(result.value["model"], "gpt-5");
-        assert_eq!(result.value["status"], "not_yet_validated");
+        assert_eq!(result.value["schema_version"], "2.0");
+        assert_eq!(result.value["metric"], "accuracy");
+        assert_eq!(result.value["status"], "ok");
     }
 
     #[test]
     fn parse_line_invalid_json() {
-        let json_input = r#"{"model":"gpt-5","status":"ok""#;
+        let json_input = r#"{"schema_version":"2.0","status":"ok""#;
 
         let result = parse_line(json_input, 4);
 
@@ -107,7 +111,7 @@ mod tests {
 
     #[test]
     fn parse_lines_keeps_all_valid_json_records() {
-        let result = parse_lines("./data/test/valid_mixed.jsonl");
+        let result = parse_lines(concat!(env!("CARGO_MANIFEST_DIR"), "/data/v2/valid.jsonl"));
 
         let parsed = result.unwrap();
         assert_eq!(parsed.records.len(), 3);

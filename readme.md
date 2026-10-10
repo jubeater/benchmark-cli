@@ -1,48 +1,36 @@
-##
-How to run:
+# benchmark-cli
 
-```rust
-cargo run -- --input [AI_log_jsonl_path] --pricing [model_pricing_json_path]
-```
-Example usage:
+Validate eval-schema v2 results, with one JSON record per line. Only schema
+version `2.0` is supported.
 
-```rust
-cargo run -- --input data/sample.jsonl --pricing data/pricing.json
+```sh
+cargo run -- --input data/v2/valid.jsonl
 ```
 
-Example output:
+For your own results, pass `--input path/to/results.jsonl` (or `-i`).
+
+The CLI parses each line, checks records with the v2 validator, and prints a
+summary:
 
 ```text
-AI Log Analysis
---------------------------
+Eval-schema v2 validation
+Accepted records: 3
+Rejected records: 0
+```
 
-Requests
-  Total:                 8
-  Successful:            4
-  Failed:                4
-  Error rate:            50.00%
---------------------------
-Data Quality
-  Invalid records:       1
---------------------------
+An unsuccessful measurement (for example `status: "oom"`) can still be an
+accepted record. The counts describe record validity, not measurement success.
+A fully valid file exits with code 0. Rejected records are counted, and input
+errors are printed to stderr. Detailed field diagnostics and rejection exit
+codes are planned in ticket #2; the additional pinned schema rules are planned
+in ticket #3.
 
-Latency
-  Min:                   150 ms
-  Avg:                   166.00 ms
-  P50:                   150 ms
-  P95:                   182 ms
-  P99:                   182 ms
-  Max:                   182 ms
---------------------------
+The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
+blocks. Its expected outcome is documented in `data/v2/README`.
 
-Token Usage
-  Input:                 8000
-  Output:                2200
-  Total:                 10200
---------------------------
+Run the checks with:
 
-Cost
-  Known-priced cost:    $0.02
-  Unpriced requests:     4
-⚠ Cost is incomplete
+```sh
+cargo test
+cargo clippy --all-targets -- -D warnings
 ```
