@@ -5,7 +5,8 @@ Line 2: core fields and every optional block populated, including model quantiza
         the time unit has an env block.
 Line 3: null seed and optional blocks, status oom with null value. An unsuccessful
         measurement is accepted when its record conforms to the schema.
-Line 4: supersedes_record_id populated, accepted as a valid correction.
+Line 4: supersedes_record_id populated, passes through the duplicate check.
+        Correction target validation and replacement are deferred to ticket #5.
 
 invalid.jsonl — 0 accepted records, 11 rejected records, exit code 1.
 Each line has exactly one defect; each produces exactly one rejection on
@@ -33,3 +34,12 @@ Line 3: malformed JSON, rejected by input parsing.
 Rejection counts include both validation and parsing failures. Rejections are
 reported on stderr as `line N: <field>: <reason>`; any rejection exits 1,
 while a missing input file exits 2.
+
+identity.jsonl — 3 accepted records, 1 rejected record, exit code 1.
+
+Line 1: original measurement, accepted.
+Line 2: same measurement key, despite a different record_id and notes, rejected:
+        `line 2: measurement_key: duplicate measurement (first seen on line 1)`.
+Line 3: correction of line 1, passes through despite the same measurement key.
+Line 4: dangling correction, also passes through for now. Correction target
+        validation and replacement are deferred to ticket #5.

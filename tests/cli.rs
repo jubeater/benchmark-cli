@@ -21,6 +21,21 @@ fn run_input(path: &str) -> Output {
 }
 
 #[test]
+fn accidental_duplicate_is_rejected_while_corrections_pass_through() {
+    let output = run_fixture("identity.jsonl");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "Eval-schema v2 validation\nAccepted records: 3\nRejected records: 1\n"
+    );
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "line 2: measurement_key: duplicate measurement (first seen on line 1)\n"
+    );
+}
+
+#[test]
 fn valid_v2_records_are_accepted() {
     let output = run_fixture("valid.jsonl");
 

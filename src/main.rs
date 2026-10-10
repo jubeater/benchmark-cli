@@ -1,6 +1,6 @@
+use benchmark_cli::identity::DuplicateFilter;
 use benchmark_cli::input::parse_lines;
 use benchmark_cli::report::render;
-use benchmark_cli::validator::validate_record;
 use clap::Parser;
 use std::fmt::{self, Display};
 use std::io;
@@ -44,8 +44,9 @@ fn run(args: Args) -> Result<i32, AppError> {
             )
         })
         .collect();
+    let mut duplicates = DuplicateFilter::default();
     for record in parsed_result.records {
-        match validate_record(record) {
+        match duplicates.validate_record(record) {
             Ok(_) => accepted += 1,
             Err(error) => {
                 rejections.push((error.line, error.to_string()));
