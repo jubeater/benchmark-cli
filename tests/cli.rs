@@ -17,7 +17,7 @@ fn run_input(path: impl AsRef<Path>) -> Output {
 }
 
 fn run_input_with_args(path: impl AsRef<Path>, extra_args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_AI-log-analysis"))
+    Command::new(env!("CARGO_BIN_EXE_benchmark-cli"))
         .arg("--input")
         .arg(path.as_ref())
         .args(extra_args)
