@@ -116,8 +116,9 @@ remains the default. Rejections still go to stderr in both formats and the
 exit codes are unchanged. JSON retains full hashes and the original stable
 group-key order, including with `--group-by`. The JSON shape:
 
-- `output_version` — a top-level integer (currently `1`) that changes whenever
-  the shape of this output changes.
+- `output_version` — a top-level integer (currently `2`) that changes whenever
+  the shape of this output changes. Version 2 adds the full `config` object to
+  every group; version 1 only included `config_hash` and optional `group_by` values.
 - `accepted`, `rejected`, `superseded` — the same counts as the text header.
 - `complete` — `false` whenever any record was rejected. It means "no input was
   rejected", not "no known limitations". Accepted unsuccessful measurements,
@@ -128,10 +129,13 @@ group-key order, including with `--group-by`. The JSON shape:
   partial results when `complete` is `false`. Groups are empty only when there
   are no effective records eligible for aggregation. Each group carries the key
   fields (`run_id`, `metric`, `unit`,
-  `config_hash`, `dataset_fingerprint`, `evaluator_fingerprint`), `n_attempted`,
+  `config_hash`, `dataset_fingerprint`, `evaluator_fingerprint`), the full `config`
+  object as written in the record (key order may change, but values are unchanged,
+  including integers versus floats such as `8` versus `8.0`), `n_attempted`,
   `n_ok`, `median` / `min` / `max` (`null` when `n_ok = 0`), and the
-  fewer-than-3-seeds warning as `warning`. With `--group-by`, each group also
-  carries a `group_by` object with the chosen config keys: an explicit `null`
+  fewer-than-3-seeds warning as `warning`. `config` is present even without
+  `--group-by`, so the dashboard can label each group directly. With `--group-by`,
+  each group also carries a `group_by` object with the chosen config keys: an explicit `null`
   serializes as `null`, an absent key is omitted from the object.
 
 ```sh
@@ -140,7 +144,7 @@ cargo run -- --input data/v2/identity.jsonl --format json
 
 ```json
 {
-  "output_version": 1,
+  "output_version": 2,
   "accepted": 3,
   "rejected": 3,
   "superseded": 1,
@@ -168,6 +172,9 @@ cargo run -- --input data/v2/identity.jsonl --format json
       "metric": "accuracy",
       "unit": "ratio",
       "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+      "config": {
+        "batch_size": 8
+      },
       "dataset_fingerprint": "null",
       "evaluator_fingerprint": "null",
       "n_attempted": 2,
@@ -190,6 +197,9 @@ looks like this:
   "metric": "tokens_per_sec",
   "unit": "tokens_per_sec",
   "config_hash": "297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749",
+  "config": {
+    "batch_size": 32
+  },
   "dataset_fingerprint": "null",
   "evaluator_fingerprint": "null",
   "group_by": {

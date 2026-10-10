@@ -32,6 +32,7 @@ struct JsonGroup {
     metric: String,
     unit: String,
     config_hash: String,
+    config: serde_json::Map<String, serde_json::Value>,
     dataset_fingerprint: String,
     evaluator_fingerprint: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,6 +67,7 @@ pub fn render_json(
                 metric: g.key.metric.clone(),
                 unit: g.key.unit.to_string(),
                 config_hash: g.key.config_hash.clone(),
+                config: g.config.clone(),
                 dataset_fingerprint: g.key.dataset_fingerprint.clone(),
                 evaluator_fingerprint: g.key.evaluator_fingerprint.clone(),
                 group_by: (!group_by.is_empty()).then(|| {
@@ -88,7 +90,7 @@ pub fn render_json(
     out
 }
 
-const OUTPUT_VERSION: u32 = 1;
+const OUTPUT_VERSION: u32 = 2;
 
 pub fn render(
     accepted: usize,

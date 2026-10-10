@@ -241,7 +241,7 @@ fn reused_record_id_fixture_rejects_reuse_and_accepts_the_originals_correction()
     assert_eq!(
         parsed,
         serde_json::json!({
-            "output_version": 1,
+            "output_version": 2,
             "accepted": 2,
             "rejected": 1,
             "superseded": 1,
@@ -254,6 +254,7 @@ fn reused_record_id_fixture_rejects_reuse_and_accepts_the_originals_correction()
                 "metric": "accuracy",
                 "unit": "ratio",
                 "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+                "config": {"batch_size": 8},
                 "dataset_fingerprint": "null",
                 "evaluator_fingerprint": "null",
                 "n_attempted": 1,
@@ -499,7 +500,7 @@ fn valid_fixture_json_snapshot_matches_text_output() {
     assert_eq!(
         stdout,
         "{\n\
-         \x20 \"output_version\": 1,\n\
+         \x20 \"output_version\": 2,\n\
          \x20 \"accepted\": 4,\n\
          \x20 \"rejected\": 0,\n\
          \x20 \"superseded\": 1,\n\
@@ -511,6 +512,9 @@ fn valid_fixture_json_snapshot_matches_text_output() {
          \x20     \"metric\": \"accuracy\",\n\
          \x20     \"unit\": \"ratio\",\n\
          \x20     \"config_hash\": \"297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749\",\n\
+         \x20     \"config\": {\n\
+         \x20       \"batch_size\": 32\n\
+         \x20     },\n\
          \x20     \"dataset_fingerprint\": \"null\",\n\
          \x20     \"evaluator_fingerprint\": \"null\",\n\
          \x20     \"n_attempted\": 1,\n\
@@ -525,6 +529,9 @@ fn valid_fixture_json_snapshot_matches_text_output() {
          \x20     \"metric\": \"accuracy\",\n\
          \x20     \"unit\": \"ratio\",\n\
          \x20     \"config_hash\": \"fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf\",\n\
+         \x20     \"config\": {\n\
+         \x20       \"batch_size\": 8\n\
+         \x20     },\n\
          \x20     \"dataset_fingerprint\": \"null\",\n\
          \x20     \"evaluator_fingerprint\": \"null\",\n\
          \x20     \"n_attempted\": 1,\n\
@@ -539,6 +546,9 @@ fn valid_fixture_json_snapshot_matches_text_output() {
          \x20     \"metric\": \"latency\",\n\
          \x20     \"unit\": \"ms\",\n\
          \x20     \"config_hash\": \"fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf\",\n\
+         \x20     \"config\": {\n\
+         \x20       \"batch_size\": 8\n\
+         \x20     },\n\
          \x20     \"dataset_fingerprint\": \"c29baa9dd3734637cf7ee495e5748ebf6867ce199a5a111959eb6fb00bef9439\",\n\
          \x20     \"evaluator_fingerprint\": \"09aaf53bdfbd9e26c3b81aad829ed47647944c34ad24bf10f5919936a910f7db\",\n\
          \x20     \"n_attempted\": 1,\n\
@@ -566,7 +576,7 @@ fn invalid_fixture_json_reports_complete_false_and_structured_rejections() {
     assert_eq!(
         parsed,
         serde_json::json!({
-            "output_version": 1,
+            "output_version": 2,
             "accepted": 0,
             "rejected": 11,
             "superseded": 0,
@@ -601,7 +611,7 @@ fn identity_fixture_json_snapshot_reports_corrections_and_rejections() {
     assert_eq!(
         parsed,
         serde_json::json!({
-            "output_version": 1,
+            "output_version": 2,
             "accepted": 3,
             "rejected": 3,
             "superseded": 1,
@@ -616,6 +626,7 @@ fn identity_fixture_json_snapshot_reports_corrections_and_rejections() {
                 "metric": "accuracy",
                 "unit": "ratio",
                 "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+                "config": {"batch_size": 8},
                 "dataset_fingerprint": "null",
                 "evaluator_fingerprint": "null",
                 "n_attempted": 2,
@@ -641,7 +652,7 @@ fn sweep_fixture_json_snapshot_omits_group_by_unless_requested() {
     assert_eq!(
         parsed,
         serde_json::json!({
-            "output_version": 1,
+            "output_version": 2,
             "accepted": 10,
             "rejected": 0,
             "superseded": 0,
@@ -653,6 +664,7 @@ fn sweep_fixture_json_snapshot_omits_group_by_unless_requested() {
                     "metric": "tokens_per_sec",
                     "unit": "tokens_per_sec",
                     "config_hash": "297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749",
+                    "config": {"batch_size": 32},
                     "dataset_fingerprint": "null",
                     "evaluator_fingerprint": "null",
                     "n_attempted": 3,
@@ -667,6 +679,7 @@ fn sweep_fixture_json_snapshot_omits_group_by_unless_requested() {
                     "metric": "tokens_per_sec",
                     "unit": "tokens_per_sec",
                     "config_hash": "db8be9fbe8f84ff4d2e61f9cf1bfa233deaabd47ecca04dbc7d065c66a175395",
+                    "config": {"batch_size": 1},
                     "dataset_fingerprint": "null",
                     "evaluator_fingerprint": "null",
                     "n_attempted": 3,
@@ -681,6 +694,7 @@ fn sweep_fixture_json_snapshot_omits_group_by_unless_requested() {
                     "metric": "tokens_per_sec",
                     "unit": "tokens_per_sec",
                     "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+                    "config": {"batch_size": 8},
                     "dataset_fingerprint": "null",
                     "evaluator_fingerprint": "null",
                     "n_attempted": 3,
@@ -703,6 +717,63 @@ fn sweep_fixture_json_snapshot_omits_group_by_unless_requested() {
     assert_eq!(groups[0]["group_by"], serde_json::json!({ "batch_size": 32 }));
     assert_eq!(groups[1]["group_by"], serde_json::json!({ "batch_size": 1 }));
     assert_eq!(groups[2]["group_by"], serde_json::json!({ "batch_size": 8 }));
+}
+
+#[test]
+fn json_groups_preserve_full_config_and_integer_float_distinction() {
+    let mut record: serde_json::Value = serde_json::from_str(
+        include_str!("../data/v2/identity.jsonl")
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    let config = serde_json::json!({
+        "batch_size": 8.0,
+        "count": 8,
+        "model": "llama-3",
+        "adapter": null,
+        "enabled": true,
+        "nested": {"values": [8, 8.0, null, "label"]}
+    });
+    record["config"] = config.clone();
+    let temp_file = std::env::temp_dir().join(format!(
+        "benchmark-cli-json-full-config-{}.jsonl",
+        std::process::id()
+    ));
+    std::fs::write(&temp_file, format!("{record}\n")).unwrap();
+    let outputs = [
+        run_input_with_args(&temp_file, &["--format", "json"]),
+        run_input_with_args(
+            &temp_file,
+            &["--format", "json", "--group-by", "batch_size,adapter,missing"],
+        ),
+    ];
+    std::fs::remove_file(temp_file).unwrap();
+
+    for (index, output) in outputs.into_iter().enumerate() {
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stderr.is_empty());
+        let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let groups = parsed["groups"].as_array().unwrap();
+        assert_eq!(groups.len(), 1);
+        let group = &groups[0];
+        assert_eq!(group["config"], config);
+        assert_eq!(group["config"]["batch_size"].to_string(), "8.0");
+        assert_eq!(group["config"]["count"].to_string(), "8");
+        assert_eq!(
+            group["config"]["nested"]["values"].to_string(),
+            "[8,8.0,null,\"label\"]"
+        );
+        if index == 0 {
+            assert!(group.get("group_by").is_none());
+        } else {
+            assert_eq!(
+                group["group_by"],
+                serde_json::json!({"batch_size": 8.0, "adapter": null})
+            );
+        }
+    }
 }
 
 #[test]
