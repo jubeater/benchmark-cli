@@ -126,8 +126,8 @@ bootstrap CIs, cost/latency rollups.
 - `tests/cli.rs` (`assert_cmd`) runs the binary on every fixture.
 
 **Exit**
-- [ ] Every fixture has an E2E test asserting its expected outcome.
-- [ ] JSON output parses with `jq`.
+- [x] Every fixture has an E2E test asserting its expected outcome.
+- [x] JSON output parses with `jq`.
 
 ---
 

@@ -1,4 +1,93 @@
 use crate::aggregate::GroupStats;
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Rejection {
+    pub line: usize,
+    pub field: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for Rejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "line {}: {}: {}", self.line, self.field, self.reason)
+    }
+}
+
+#[derive(Serialize)]
+struct JsonOutput {
+    output_version: u32,
+    accepted: usize,
+    rejected: usize,
+    superseded: usize,
+    complete: bool,
+    rejections: Vec<Rejection>,
+    groups: Vec<JsonGroup>,
+}
+
+#[derive(Serialize)]
+struct JsonGroup {
+    run_id: String,
+    metric: String,
+    unit: String,
+    config_hash: String,
+    dataset_fingerprint: String,
+    evaluator_fingerprint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_by: Option<serde_json::Map<String, serde_json::Value>>,
+    n_attempted: usize,
+    n_ok: usize,
+    median: Option<f64>,
+    min: Option<f64>,
+    max: Option<f64>,
+    warning: bool,
+}
+
+pub fn render_json(
+    accepted: usize,
+    rejected: usize,
+    superseded: usize,
+    groups: &[GroupStats],
+    group_by: &[String],
+    rejections: &[Rejection],
+) -> String {
+    let payload = JsonOutput {
+        output_version: OUTPUT_VERSION,
+        accepted,
+        rejected,
+        superseded,
+        complete: rejected == 0,
+        rejections: rejections.to_vec(),
+        groups: groups
+            .iter()
+            .map(|g| JsonGroup {
+                run_id: g.key.run_id.clone(),
+                metric: g.key.metric.clone(),
+                unit: g.key.unit.to_string(),
+                config_hash: g.key.config_hash.clone(),
+                dataset_fingerprint: g.key.dataset_fingerprint.clone(),
+                evaluator_fingerprint: g.key.evaluator_fingerprint.clone(),
+                group_by: (!group_by.is_empty()).then(|| {
+                    group_by
+                        .iter()
+                        .filter_map(|key| g.config.get(key).cloned().map(|v| (key.clone(), v)))
+                        .collect()
+                }),
+                n_attempted: g.n_attempted,
+                n_ok: g.n_ok,
+                median: g.median,
+                min: g.min,
+                max: g.max,
+                warning: g.warning,
+            })
+            .collect(),
+    };
+    let mut out = serde_json::to_string_pretty(&payload).expect("payload is serializable");
+    out.push('\n');
+    out
+}
+
+const OUTPUT_VERSION: u32 = 1;
 
 pub fn render(
     accepted: usize,

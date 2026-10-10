@@ -1,8 +1,8 @@
 use benchmark_cli::aggregate::aggregate_records;
 use benchmark_cli::identity::RecordResolver;
 use benchmark_cli::input::parse_lines;
-use benchmark_cli::report::render;
-use clap::Parser;
+use benchmark_cli::report::{self, Rejection, render};
+use clap::{Parser, ValueEnum};
 use std::fmt::{self, Display};
 use std::io;
 
@@ -16,6 +16,16 @@ struct Args {
     /// Show chosen config keys as columns in the group table
     #[arg(long, value_delimiter = ',')]
     group_by: Vec<String>,
+
+    /// Output format (json is machine-readable for the dashboard)
+    #[arg(long, value_enum, default_value_t = Format::Text)]
+    format: Format,
+}
+
+#[derive(Clone, ValueEnum, Debug, PartialEq, Eq)]
+enum Format {
+    Text,
+    Json,
 }
 
 #[derive(Debug)]
@@ -39,14 +49,13 @@ fn run(args: Args) -> Result<i32, AppError> {
         source,
     })?;
     let mut accepted = 0;
-    let mut rejections: Vec<(usize, String)> = parsed_result
+    let mut rejections: Vec<Rejection> = parsed_result
         .errors
         .iter()
-        .map(|error| {
-            (
-                error.line_number,
-                format!("line {}: <json>: {}", error.line_number, error.source_error),
-            )
+        .map(|error| Rejection {
+            line: error.line_number,
+            field: "<json>".to_string(),
+            reason: error.source_error.to_string(),
         })
         .collect();
     let mut resolver = RecordResolver::default();
@@ -54,13 +63,17 @@ fn run(args: Args) -> Result<i32, AppError> {
         match resolver.validate_record(record) {
             Ok(_) => accepted += 1,
             Err(error) => {
-                rejections.push((error.line, error.to_string()));
+                rejections.push(Rejection {
+                    line: error.line,
+                    field: error.field,
+                    reason: error.reason,
+                });
             }
         }
     }
-    rejections.sort_by_key(|(line, _)| *line);
-    for (_, message) in &rejections {
-        eprintln!("{message}");
+    rejections.sort_by_key(|rejection| rejection.line);
+    for rejection in &rejections {
+        eprintln!("{rejection}");
     }
     let rejected = rejections.len();
 
@@ -69,13 +82,24 @@ fn run(args: Args) -> Result<i32, AppError> {
     } else {
         Vec::new()
     };
-    let output_string = render(
-        accepted,
-        rejected,
-        resolver.superseded_count(),
-        &groups,
-        &args.group_by,
-    );
+    let output_string = if args.format == Format::Json {
+        report::render_json(
+            accepted,
+            rejected,
+            resolver.superseded_count(),
+            &groups,
+            &args.group_by,
+            &rejections,
+        )
+    } else {
+        render(
+            accepted,
+            rejected,
+            resolver.superseded_count(),
+            &groups,
+            &args.group_by,
+        )
+    };
     print!("{output_string}");
 
     if rejected > 0 { Ok(1) } else { Ok(0) }

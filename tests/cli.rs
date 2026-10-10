@@ -146,6 +146,252 @@ fn invalid_records_report_line_field_and_reason() {
 }
 
 #[test]
+fn valid_fixture_json_snapshot_matches_text_output() {
+    let output = run_fixture_with_args("valid.jsonl", &["--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("JSON output must parse");
+    assert_eq!(parsed["complete"], serde_json::json!(true));
+    assert_eq!(
+        stdout,
+        "{\n\
+         \x20 \"output_version\": 1,\n\
+         \x20 \"accepted\": 4,\n\
+         \x20 \"rejected\": 0,\n\
+         \x20 \"superseded\": 1,\n\
+         \x20 \"complete\": true,\n\
+         \x20 \"rejections\": [],\n\
+         \x20 \"groups\": [\n\
+         \x20   {\n\
+         \x20     \"run_id\": \"00000000-0000-4000-8000-000000000010\",\n\
+         \x20     \"metric\": \"accuracy\",\n\
+         \x20     \"unit\": \"ratio\",\n\
+         \x20     \"config_hash\": \"297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749\",\n\
+         \x20     \"dataset_fingerprint\": \"null\",\n\
+         \x20     \"evaluator_fingerprint\": \"null\",\n\
+         \x20     \"n_attempted\": 1,\n\
+         \x20     \"n_ok\": 0,\n\
+         \x20     \"median\": null,\n\
+         \x20     \"min\": null,\n\
+         \x20     \"max\": null,\n\
+         \x20     \"warning\": true\n\
+         \x20   },\n\
+         \x20   {\n\
+         \x20     \"run_id\": \"00000000-0000-4000-8000-000000000010\",\n\
+         \x20     \"metric\": \"accuracy\",\n\
+         \x20     \"unit\": \"ratio\",\n\
+         \x20     \"config_hash\": \"fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf\",\n\
+         \x20     \"dataset_fingerprint\": \"null\",\n\
+         \x20     \"evaluator_fingerprint\": \"null\",\n\
+         \x20     \"n_attempted\": 1,\n\
+         \x20     \"n_ok\": 1,\n\
+         \x20     \"median\": 0.96,\n\
+         \x20     \"min\": 0.96,\n\
+         \x20     \"max\": 0.96,\n\
+         \x20     \"warning\": true\n\
+         \x20   },\n\
+         \x20   {\n\
+         \x20     \"run_id\": \"00000000-0000-4000-8000-000000000010\",\n\
+         \x20     \"metric\": \"latency\",\n\
+         \x20     \"unit\": \"ms\",\n\
+         \x20     \"config_hash\": \"fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf\",\n\
+         \x20     \"dataset_fingerprint\": \"c29baa9dd3734637cf7ee495e5748ebf6867ce199a5a111959eb6fb00bef9439\",\n\
+         \x20     \"evaluator_fingerprint\": \"09aaf53bdfbd9e26c3b81aad829ed47647944c34ad24bf10f5919936a910f7db\",\n\
+         \x20     \"n_attempted\": 1,\n\
+         \x20     \"n_ok\": 1,\n\
+         \x20     \"median\": 12.5,\n\
+         \x20     \"min\": 12.5,\n\
+         \x20     \"max\": 12.5,\n\
+         \x20     \"warning\": true\n\
+         \x20   }\n\
+         \x20 ]\n\
+         }\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn invalid_fixture_json_reports_complete_false_and_structured_rejections() {
+    let output = run_fixture_with_args("invalid.jsonl", &["--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("JSON output must parse");
+
+    assert_eq!(
+        parsed,
+        serde_json::json!({
+            "output_version": 1,
+            "accepted": 0,
+            "rejected": 11,
+            "superseded": 0,
+            "complete": false,
+            "rejections": [
+                { "line": 1, "field": "metric", "reason": "missing required field" },
+                { "line": 2, "field": "seed", "reason": "invalid type: string \"1337\", expected u64" },
+                { "line": 3, "field": "status", "reason": "unknown variant `bogus`, expected one of `ok`, `failed`, `timeout`, `oom`, `cancelled`" },
+                { "line": 4, "field": "dataset.split", "reason": "missing field `split`" },
+                { "line": 5, "field": "<json>", "reason": "EOF while parsing a value at line 1 column 18" },
+                { "line": 6, "field": "unit", "reason": "missing required field" },
+                { "line": 7, "field": "unit", "reason": "unknown variant `kilograms`, expected one of `ms`, `s`, `tokens_per_sec`, `items_per_sec`, `mb`, `gb`, `ratio`, `count`, `usd`, `score`" },
+                { "line": 8, "field": "env", "reason": "unit requires env block" },
+                { "line": 9, "field": "value", "reason": "value must be a finite number when status is ok" },
+                { "line": 10, "field": "unknown_key", "reason": "unknown top-level field" },
+                { "line": 11, "field": "config", "reason": "-0.0 is not allowed in config" }
+            ],
+            "groups": []
+        })
+    );
+}
+
+#[test]
+fn identity_fixture_json_snapshot_reports_corrections_and_rejections() {
+    let output = run_fixture_with_args("identity.jsonl", &["--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("JSON output must parse");
+
+    assert_eq!(
+        parsed,
+        serde_json::json!({
+            "output_version": 1,
+            "accepted": 3,
+            "rejected": 3,
+            "superseded": 1,
+            "complete": false,
+            "rejections": [
+                { "line": 2, "field": "measurement_key", "reason": "duplicate measurement (first seen on line 1)" },
+                { "line": 4, "field": "supersedes_record_id", "reason": "dangling reference: record 'missing-record' was not accepted earlier" },
+                { "line": 6, "field": "supersedes_record_id", "reason": "target record 'identity-original' has a different measurement_key" }
+            ],
+            "groups": []
+        })
+    );
+}
+
+#[test]
+fn sweep_fixture_json_snapshot_omits_group_by_unless_requested() {
+    let output = run_fixture_with_args("sweep.jsonl", &["--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("JSON output must parse");
+
+    assert_eq!(
+        parsed,
+        serde_json::json!({
+            "output_version": 1,
+            "accepted": 10,
+            "rejected": 0,
+            "superseded": 0,
+            "complete": true,
+            "rejections": [],
+            "groups": [
+                {
+                    "run_id": "2026-10-09T14:00:00Z-sweep-001",
+                    "metric": "tokens_per_sec",
+                    "unit": "tokens_per_sec",
+                    "config_hash": "297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749",
+                    "dataset_fingerprint": "null",
+                    "evaluator_fingerprint": "null",
+                    "n_attempted": 3,
+                    "n_ok": 3,
+                    "median": 320.0,
+                    "min": 300.0,
+                    "max": 350.0,
+                    "warning": false
+                },
+                {
+                    "run_id": "2026-10-09T14:00:00Z-sweep-001",
+                    "metric": "tokens_per_sec",
+                    "unit": "tokens_per_sec",
+                    "config_hash": "db8be9fbe8f84ff4d2e61f9cf1bfa233deaabd47ecca04dbc7d065c66a175395",
+                    "dataset_fingerprint": "null",
+                    "evaluator_fingerprint": "null",
+                    "n_attempted": 3,
+                    "n_ok": 3,
+                    "median": 102.0,
+                    "min": 100.0,
+                    "max": 105.0,
+                    "warning": false
+                },
+                {
+                    "run_id": "2026-10-09T14:00:00Z-sweep-001",
+                    "metric": "tokens_per_sec",
+                    "unit": "tokens_per_sec",
+                    "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+                    "dataset_fingerprint": "null",
+                    "evaluator_fingerprint": "null",
+                    "n_attempted": 3,
+                    "n_ok": 2,
+                    "median": 205.0,
+                    "min": 200.0,
+                    "max": 210.0,
+                    "warning": true
+                }
+            ]
+        })
+    );
+
+    let output = run_fixture_with_args("sweep.jsonl", &["--format", "json", "--group-by", "batch_size"]);
+    assert_eq!(output.status.code(), Some(0));
+    let parsed: serde_json::Value =
+        serde_json::from_str(&String::from_utf8(output.stdout).unwrap())
+            .expect("grouped JSON output must parse");
+    let groups = parsed["groups"].as_array().unwrap();
+    assert_eq!(groups[0]["group_by"], serde_json::json!({ "batch_size": 32 }));
+    assert_eq!(groups[1]["group_by"], serde_json::json!({ "batch_size": 1 }));
+    assert_eq!(groups[2]["group_by"], serde_json::json!({ "batch_size": 8 }));
+}
+
+#[test]
+fn json_group_by_keeps_null_and_absent_config_keys_distinct() {
+    let dir = std::env::temp_dir();
+    let temp_file = dir.join("test_json_group_by_distinct.jsonl");
+    let line1 = serde_json::json!({
+        "schema_version": "2.0",
+        "record_id": "00000000-0000-4000-8000-000000000902",
+        "run_id": "run-test",
+        "project": "benchmark",
+        "timestamp": "2026-10-09T12:00:00Z",
+        "git_commit": "79e18e325900d533d0e90ccc6ec469a03ece1cb7",
+        "git_dirty": false,
+        "config": {"model": "llama-3", "adapter": null},
+        "seed": 1,
+        "metric": "score",
+        "unit": "score",
+        "value": 0.85,
+        "status": "ok",
+        "notes": "test"
+    });
+    std::fs::write(&temp_file, format!("{line1}\n")).unwrap();
+
+    let output = run_input_with_args(
+        &temp_file,
+        &["--format", "json", "--group-by", "model,adapter,unknown_key"],
+    );
+
+    let _ = std::fs::remove_file(temp_file);
+
+    assert_eq!(output.status.code(), Some(0));
+    let parsed: serde_json::Value =
+        serde_json::from_str(&String::from_utf8(output.stdout).unwrap())
+            .expect("JSON output must parse");
+    let group_by = parsed["groups"][0]["group_by"]
+        .as_object()
+        .expect("group_by columns present when requested");
+    assert_eq!(group_by.get("model"), Some(&serde_json::json!("llama-3")));
+    assert_eq!(group_by.get("adapter"), Some(&serde_json::Value::Null));
+    assert_eq!(group_by.get("unknown_key"), None, "absent key must be omitted");
+}
+
+#[test]
 fn missing_input_file_exits_2_with_clear_message() {
     let output = run_input("data/v2/does-not-exist.jsonl");
 

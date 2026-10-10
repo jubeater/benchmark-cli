@@ -85,6 +85,80 @@ run_id                         | metric         | unit           | config_hash  
 warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
 ```
 
+`--format json` emits a machine-readable result for the dashboard; `text`
+remains the default. Rejections still go to stderr in both formats and the
+exit codes are unchanged. The JSON shape:
+
+- `output_version` — a top-level integer (currently `1`) that changes whenever
+  the shape of this output changes.
+- `accepted`, `rejected`, `superseded` — the same counts as the text header.
+- `complete` — `false` whenever any record was rejected. It means "no input was
+  rejected", not "no known limitations".
+- `rejections` — one object per rejected record, sorted by line: `line`,
+  `field` (`<json>` for unparseable lines), and `reason`.
+- `groups` — the aggregate groups, empty when any record was rejected (as in
+  text mode). Each group carries the key fields (`run_id`, `metric`, `unit`,
+  `config_hash`, `dataset_fingerprint`, `evaluator_fingerprint`), `n_attempted`,
+  `n_ok`, `median` / `min` / `max` (`null` when `n_ok = 0`), and the
+  fewer-than-3-seeds warning as `warning`. With `--group-by`, each group also
+  carries a `group_by` object with the chosen config keys: an explicit `null`
+  serializes as `null`, an absent key is omitted from the object.
+
+```sh
+cargo run -- --input data/v2/identity.jsonl --format json
+```
+
+```json
+{
+  "output_version": 1,
+  "accepted": 3,
+  "rejected": 3,
+  "superseded": 1,
+  "complete": false,
+  "rejections": [
+    {
+      "line": 2,
+      "field": "measurement_key",
+      "reason": "duplicate measurement (first seen on line 1)"
+    },
+    {
+      "line": 4,
+      "field": "supersedes_record_id",
+      "reason": "dangling reference: record 'missing-record' was not accepted earlier"
+    },
+    {
+      "line": 6,
+      "field": "supersedes_record_id",
+      "reason": "target record 'identity-original' has a different measurement_key"
+    }
+  ],
+  "groups": []
+}
+```
+
+A group from `--input data/v2/sweep.jsonl --format json --group-by batch_size`
+looks like this:
+
+```json
+{
+  "run_id": "2026-10-09T14:00:00Z-sweep-001",
+  "metric": "tokens_per_sec",
+  "unit": "tokens_per_sec",
+  "config_hash": "297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749",
+  "dataset_fingerprint": "null",
+  "evaluator_fingerprint": "null",
+  "group_by": {
+    "batch_size": 32
+  },
+  "n_attempted": 3,
+  "n_ok": 3,
+  "median": 320.0,
+  "min": 300.0,
+  "max": 350.0,
+  "warning": false
+}
+```
+
 The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
 blocks. The fixture in `data/v2/invalid.jsonl` covers one defect per line
 (missing field, wrong type, bad enum, malformed block, bad JSON). The identity fixture
