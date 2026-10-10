@@ -26,6 +26,121 @@ fn run_input_with_args(path: impl AsRef<Path>, extra_args: &[&str]) -> Output {
 }
 
 #[test]
+fn text_uses_short_hashes_for_all_fingerprints_and_warnings() {
+    let output = run_fixture("valid.jsonl");
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let hashes: Vec<Vec<_>> = stdout
+        .lines()
+        .filter(|line| line.starts_with("00000000-0000-4000-8000-000000000010 |"))
+        .map(|line| line.split('|').skip(3).take(3).map(str::trim).collect())
+        .collect();
+    assert_eq!(
+        hashes,
+        vec![
+            vec!["297b1e2373ca", "null", "null"],
+            vec!["fc046d91d2e2", "null", "null"],
+            vec!["fc046d91d2e2", "c29baa9dd373", "09aaf53bdfbd"],
+        ]
+    );
+    let warnings: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.starts_with("warning:"))
+        .collect();
+    assert_eq!(warnings.len(), 3);
+    assert!(warnings[0].contains("config_hash: 297b1e2373ca)"));
+    assert!(warnings[1].contains("config_hash: fc046d91d2e2)"));
+    assert!(warnings[2].contains("config_hash: fc046d91d2e2)"));
+}
+
+#[test]
+fn group_by_sorts_typed_values_then_other_keys_independently_of_input_order() {
+    use serde_json::json;
+    // Deliberately give numerically larger values lexically earlier run IDs.
+    let cases = [
+        ("group-negative-fraction", json!({"size": -2.5})),
+        ("group-negative-integer", json!({"size": -2})),
+        ("group-zero", json!({"size": 0})),
+        ("group-secondary-b", json!({"size": 1, "label": 2})),
+        ("group-secondary-a", json!({"size": 1, "label": 10})),
+        ("group-tie-a", json!({"size": 8.0})),
+        ("group-tie-b", json!({"size": 8})),
+        ("group-large-b", json!({"size": 9007199254740992_u64})),
+        ("group-large-a", json!({"size": 9007199254740993_u64})),
+        ("group-string-a", json!({"size": "alpha"})),
+        ("group-string-b", json!({"size": "beta"})),
+        ("group-bool-false", json!({"size": false})),
+        ("group-bool-true", json!({"size": true})),
+        ("group-array", json!({"size": [1, 2]})),
+        ("group-object", json!({"size": {"nested": 1}})),
+        ("group-null", json!({"size": null})),
+        ("group-absent", json!({})),
+    ];
+    let template: serde_json::Value = serde_json::from_str(
+        include_str!("../data/v2/identity.jsonl")
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    let records: Vec<_> = cases
+        .iter()
+        .map(|(run_id, config)| {
+            let mut record = template.clone();
+            record["record_id"] = json!(run_id);
+            record["run_id"] = json!(run_id);
+            record["config"] = config.clone();
+            record.to_string()
+        })
+        .collect();
+    let path = std::env::temp_dir().join(format!(
+        "benchmark-cli-group-order-{}.jsonl",
+        std::process::id()
+    ));
+    std::fs::write(&path, records.join("\n")).unwrap();
+    let args = ["--group-by", "size", "--group-by", "label"];
+    let sorted = run_input_with_args(&path, &args);
+    let ungrouped = run_input(&path);
+    let repeated = run_input(&path);
+    std::fs::write(
+        &path,
+        records.into_iter().rev().collect::<Vec<_>>().join("\n"),
+    )
+    .unwrap();
+    let reversed_sorted = run_input_with_args(&path, &args);
+    let reversed_ungrouped = run_input(&path);
+    std::fs::remove_file(path).unwrap();
+
+    assert_eq!(sorted.status.code(), Some(0));
+    assert!(sorted.stderr.is_empty());
+    assert_eq!(sorted.stdout, reversed_sorted.stdout);
+    assert_eq!(ungrouped.stdout, repeated.stdout);
+    assert_eq!(ungrouped.stdout, reversed_ungrouped.stdout);
+    let stdout = String::from_utf8(sorted.stdout).unwrap();
+    let row_order: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.starts_with("group-"))
+        .map(|line| line.split('|').next().unwrap().trim())
+        .collect();
+    assert_eq!(
+        row_order,
+        cases.iter().map(|(run_id, _)| *run_id).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn readme_sweep_tables_match_real_cli_output() {
+    let readme = include_str!("../readme.md");
+    for args in [vec![], vec!["--group-by", "batch_size"]] {
+        let output = run_fixture_with_args("sweep.jsonl", &args);
+        assert_eq!(output.status.code(), Some(0));
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let (_, table) = stdout.split_once("\n\n").unwrap();
+        assert!(readme.contains(&format!("```text\n{table}```")));
+    }
+}
+
+#[test]
 fn blank_lines_are_skipped_in_both_output_formats() {
     for format in ["text", "json"] {
         let output = run_fixture_with_args("blank-lines.jsonl", &["--format", format]);
@@ -160,14 +275,14 @@ fn valid_v2_records_are_accepted() {
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
         "Eval-schema v2 validation\nAccepted records: 4\nRejected records: 0\nSuperseded records: 1\n\n\
-         run_id                               | metric   | unit  | config_hash                                                      | dataset_fingerprint                                              | evaluator_fingerprint                                            | n_attempted | n_ok | median | min  | max \n\
-         -------------------------------------+----------+-------+------------------------------------------------------------------+------------------------------------------------------------------+------------------------------------------------------------------+-------------+------+--------+------+-----\n\
-         00000000-0000-4000-8000-000000000010 | accuracy | ratio | 297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749 | null                                                             | null                                                             |           1 |    0 |    N/A |  N/A |  N/A\n\
-         00000000-0000-4000-8000-000000000010 | accuracy | ratio | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | null                                                             | null                                                             |           1 |    1 |   0.96 | 0.96 | 0.96\n\
-         00000000-0000-4000-8000-000000000010 | latency  | ms    | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | c29baa9dd3734637cf7ee495e5748ebf6867ce199a5a111959eb6fb00bef9439 | 09aaf53bdfbd9e26c3b81aad829ed47647944c34ad24bf10f5919936a910f7db |           1 |    1 |   12.5 | 12.5 | 12.5\n\n\
-         warning: group (run_id: 00000000-0000-4000-8000-000000000010, metric: accuracy, config_hash: 297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749) has fewer than 3 ok seeds (n_ok = 0)\n\
-         warning: group (run_id: 00000000-0000-4000-8000-000000000010, metric: accuracy, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 1)\n\
-         warning: group (run_id: 00000000-0000-4000-8000-000000000010, metric: latency, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 1)\n"
+         run_id                               | metric   | unit  | config_hash  | dataset_fingerprint | evaluator_fingerprint | n_attempted | n_ok | median | min  | max \n\
+         -------------------------------------+----------+-------+--------------+---------------------+-----------------------+-------------+------+--------+------+-----\n\
+         00000000-0000-4000-8000-000000000010 | accuracy | ratio | 297b1e2373ca | null                | null                  |           1 |    0 |    N/A |  N/A |  N/A\n\
+         00000000-0000-4000-8000-000000000010 | accuracy | ratio | fc046d91d2e2 | null                | null                  |           1 |    1 |   0.96 | 0.96 | 0.96\n\
+         00000000-0000-4000-8000-000000000010 | latency  | ms    | fc046d91d2e2 | c29baa9dd373        | 09aaf53bdfbd          |           1 |    1 |   12.5 | 12.5 | 12.5\n\n\
+         warning: group (run_id: 00000000-0000-4000-8000-000000000010, metric: accuracy, config_hash: 297b1e2373ca) has fewer than 3 ok seeds (n_ok = 0)\n\
+         warning: group (run_id: 00000000-0000-4000-8000-000000000010, metric: accuracy, config_hash: fc046d91d2e2) has fewer than 3 ok seeds (n_ok = 1)\n\
+         warning: group (run_id: 00000000-0000-4000-8000-000000000010, metric: latency, config_hash: fc046d91d2e2) has fewer than 3 ok seeds (n_ok = 1)\n"
     );
     assert!(output.stderr.is_empty());
 }
@@ -208,7 +323,7 @@ fn sweep_fixture_aggregates_groups_with_hand_computed_medians_and_warning() {
     assert!(stdout.contains("3 |    3 |    320 | 300 | 350"));
 
     // Group with 2 ok seeds triggers warning
-    assert!(stdout.contains("warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)"));
+    assert!(stdout.contains("warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2) has fewer than 3 ok seeds (n_ok = 2)"));
 
     // Aggregate record appears nowhere (exactly 3 group rows)
     let group_rows: Vec<&str> = stdout
@@ -642,7 +757,7 @@ fn missing_input_file_exits_2_with_clear_message() {
 }
 
 #[test]
-fn sweep_fixture_with_group_by_batch_size_shows_column_and_same_statistics() {
+fn sweep_fixture_with_group_by_batch_size_sorts_rows_and_keeps_statistics() {
     let output = run_fixture_with_args("sweep.jsonl", &["--group-by", "batch_size"]);
 
     assert_eq!(output.status.code(), Some(0));
@@ -656,13 +771,27 @@ fn sweep_fixture_with_group_by_batch_size_shows_column_and_same_statistics() {
     let header_line = stdout.lines().nth(5).unwrap();
     assert!(header_line.contains("evaluator_fingerprint | batch_size | n_attempted"));
 
+    let rows: Vec<Vec<_>> = stdout
+        .lines()
+        .filter(|line| line.starts_with("2026-10-09T14:00:00Z-sweep-001 |"))
+        .map(|line| line.split('|').map(str::trim).collect())
+        .collect();
+    assert_eq!(
+        rows.iter().map(|row| row[6]).collect::<Vec<_>>(),
+        ["1", "8", "32"]
+    );
+    assert_eq!(
+        rows.iter().map(|row| row[3]).collect::<Vec<_>>(),
+        ["db8be9fbe8f8", "fc046d91d2e2", "297b1e2373ca"]
+    );
+
     // Check each row contains its batch_size value and the exact same statistics as without the flag
     assert!(stdout.contains("32         |           3 |    3 |    320 | 300 | 350"));
     assert!(stdout.contains("1          |           3 |    3 |    102 | 100 | 105"));
     assert!(stdout.contains("8          |           3 |    2 |    205 | 200 | 210"));
 
     // Warning is still printed
-    assert!(stdout.contains("warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)"));
+    assert!(stdout.contains("warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2) has fewer than 3 ok seeds (n_ok = 2)"));
 }
 
 #[test]

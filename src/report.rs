@@ -1,5 +1,6 @@
 use crate::aggregate::GroupStats;
 use serde::Serialize;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Rejection {
@@ -125,9 +126,77 @@ fn format_config_value(value: Option<&serde_json::Value>) -> String {
     }
 }
 
+fn short_hash(hash: &str) -> &str {
+    // Fingerprints are ASCII SHA-256 hex strings or the sentinel "null".
+    &hash[..hash.len().min(12)]
+}
+
+fn config_value_rank(value: Option<&serde_json::Value>) -> u8 {
+    use serde_json::Value;
+    match value {
+        Some(Value::Number(_)) => 0,
+        Some(Value::String(_)) => 1,
+        Some(Value::Bool(_)) => 2,
+        Some(Value::Array(_)) => 3,
+        Some(Value::Object(_)) => 4,
+        Some(Value::Null) => 5,
+        None => 6,
+    }
+}
+
+fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) -> Ordering {
+    let integer = |n: &serde_json::Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
+    };
+    let compare_integer_float = |integer: i128, float: f64| {
+        // Truncate the float, not the integer: casting integers to f64 can
+        // collapse distinct 64-bit values. i128 covers every JSON integer.
+        integer.cmp(&(float as i128)).then_with(|| {
+            0.0_f64
+                .partial_cmp(&float.fract())
+                .expect("JSON numbers are finite")
+        })
+    };
+    match (integer(a), integer(b)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        (Some(a), None) => compare_integer_float(a, b.as_f64().unwrap()),
+        (None, Some(b)) => compare_integer_float(b, a.as_f64().unwrap()).reverse(),
+        (None, None) => a
+            .as_f64()
+            .unwrap()
+            .partial_cmp(&b.as_f64().unwrap())
+            .expect("JSON numbers are finite"),
+    }
+}
+
+fn compare_config_values(a: Option<&serde_json::Value>, b: Option<&serde_json::Value>) -> Ordering {
+    use serde_json::Value;
+    match (a, b) {
+        (Some(Value::Number(a)), Some(Value::Number(b))) => compare_numbers(a, b),
+        (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
+        _ => config_value_rank(a)
+            .cmp(&config_value_rank(b))
+            .then_with(|| format_config_value(a).cmp(&format_config_value(b))),
+    }
+}
+
 pub fn render_table(groups: &[GroupStats], group_by: &[String]) -> String {
     if groups.is_empty() {
         return String::new();
+    }
+
+    let mut ordered_groups: Vec<_> = groups.iter().collect();
+    if !group_by.is_empty() {
+        ordered_groups.sort_by(|a, b| {
+            group_by
+                .iter()
+                .map(|key| compare_config_values(a.config.get(key), b.config.get(key)))
+                .find(|order| *order != Ordering::Equal)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.key.cmp(&b.key))
+        });
     }
 
     let mut headers: Vec<String> = vec![
@@ -150,14 +219,14 @@ pub fn render_table(groups: &[GroupStats], group_by: &[String]) -> String {
     ]);
 
     let mut rows: Vec<Vec<String>> = Vec::new();
-    for g in groups {
+    for g in &ordered_groups {
         let mut row = vec![
             g.key.run_id.clone(),
             g.key.metric.clone(),
             g.key.unit.to_string(),
-            g.key.config_hash.clone(),
-            g.key.dataset_fingerprint.clone(),
-            g.key.evaluator_fingerprint.clone(),
+            short_hash(&g.key.config_hash).to_string(),
+            short_hash(&g.key.dataset_fingerprint).to_string(),
+            short_hash(&g.key.evaluator_fingerprint).to_string(),
         ];
         for key in group_by {
             row.push(format_config_value(g.config.get(key)));
@@ -218,11 +287,11 @@ pub fn render_table(groups: &[GroupStats], group_by: &[String]) -> String {
     }
 
     let mut warnings = Vec::new();
-    for g in groups {
+    for g in &ordered_groups {
         if g.warning {
             warnings.push(format!(
                 "warning: group (run_id: {}, metric: {}, config_hash: {}) has fewer than 3 ok seeds (n_ok = {})",
-                g.key.run_id, g.key.metric, g.key.config_hash, g.n_ok
+                g.key.run_id, g.key.metric, short_hash(&g.key.config_hash), g.n_ok
             ));
         }
     }

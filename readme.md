@@ -66,16 +66,18 @@ stable sorted order. Records containing an `aggregate` key in their `config`
 across all statuses, `n_ok`, and `median` / `min` / `max` over `status: ok` values.
 For even counts, the median is the mean of the two middle values. When `n_ok = 0`,
 statistics are displayed as `N/A`. A warning is printed for any group with fewer than
-3 `ok` seeds (enforcing the three-seed rule):
+3 `ok` seeds (enforcing the three-seed rule). Text tables and warnings display
+the first 12 characters of each hash; `null` fingerprints stay `null`. For example,
+`--input data/v2/sweep.jsonl` produces:
 
 ```text
-run_id                         | metric         | unit           | config_hash                                                      | dataset_fingerprint | evaluator_fingerprint | n_attempted | n_ok | median | min | max
--------------------------------+----------------+----------------+------------------------------------------------------------------+---------------------+-----------------------+-------------+------+--------+-----+----
-2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | 297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749 | null                | null                  |           3 |    3 |    320 | 300 | 350
-2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | db8be9fbe8f84ff4d2e61f9cf1bfa233deaabd47ecca04dbc7d065c66a175395 | null                | null                  |           3 |    3 |    102 | 100 | 105
-2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | null                | null                  |           3 |    2 |    205 | 200 | 210
+run_id                         | metric         | unit           | config_hash  | dataset_fingerprint | evaluator_fingerprint | n_attempted | n_ok | median | min | max
+-------------------------------+----------------+----------------+--------------+---------------------+-----------------------+-------------+------+--------+-----+----
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | 297b1e2373ca | null                | null                  |           3 |    3 |    320 | 300 | 350
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | db8be9fbe8f8 | null                | null                  |           3 |    3 |    102 | 100 | 105
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2 | null                | null                  |           3 |    2 |    205 | 200 | 210
 
-warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
+warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2) has fewer than 3 ok seeds (n_ok = 2)
 ```
 
 If any records are rejected, the CLI still shows statistics from accepted,
@@ -93,21 +95,26 @@ This is presentation only: grouping itself is unchanged and still uses the full
 config hash, so `--group-by` never merges different configurations. Multiple
 keys can be passed as a comma-separated list or by repeating the flag. If a
 group's config lacks a requested key, it renders as `absent`, distinct from an
-explicit `null`:
+explicit `null`. In text output, rows sort by the requested keys in flag order:
+numbers numerically, then strings lexically, then booleans, arrays, and objects
+(the latter two by their canonical JSON text), followed by null and absent values.
+Ties use the full group key. Without `--group-by`, the original stable group-key
+order is preserved. The same sweep with `--group-by batch_size` produces:
 
 ```text
-run_id                         | metric         | unit           | config_hash                                                      | dataset_fingerprint | evaluator_fingerprint | batch_size | n_attempted | n_ok | median | min | max
--------------------------------+----------------+----------------+------------------------------------------------------------------+---------------------+-----------------------+------------+-------------+------+--------+-----+----
-2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | 297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749 | null                | null                  | 32         |           3 |    3 |    320 | 300 | 350
-2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | db8be9fbe8f84ff4d2e61f9cf1bfa233deaabd47ecca04dbc7d065c66a175395 | null                | null                  | 1          |           3 |    3 |    102 | 100 | 105
-2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | null                | null                  | 8          |           3 |    2 |    205 | 200 | 210
+run_id                         | metric         | unit           | config_hash  | dataset_fingerprint | evaluator_fingerprint | batch_size | n_attempted | n_ok | median | min | max
+-------------------------------+----------------+----------------+--------------+---------------------+-----------------------+------------+-------------+------+--------+-----+----
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | db8be9fbe8f8 | null                | null                  | 1          |           3 |    3 |    102 | 100 | 105
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2 | null                | null                  | 8          |           3 |    2 |    205 | 200 | 210
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | 297b1e2373ca | null                | null                  | 32         |           3 |    3 |    320 | 300 | 350
 
-warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
+warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2) has fewer than 3 ok seeds (n_ok = 2)
 ```
 
 `--format json` emits a machine-readable result for the dashboard; `text`
 remains the default. Rejections still go to stderr in both formats and the
-exit codes are unchanged. The JSON shape:
+exit codes are unchanged. JSON retains full hashes and the original stable
+group-key order, including with `--group-by`. The JSON shape:
 
 - `output_version` — a top-level integer (currently `1`) that changes whenever
   the shape of this output changes.
