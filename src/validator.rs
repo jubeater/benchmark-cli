@@ -1,7 +1,7 @@
 use crate::input::InputRecord;
 use crate::model::{
     Artifacts, Comparison, Cost, Dataset, Env, EvalRecordV2, Evaluator, Model, SchemaVersion,
-    Status,
+    Status, Unit,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
@@ -22,7 +22,7 @@ impl Display for InvalidRecord {
 
 pub type ValidationResult = Result<EvalRecordV2, InvalidRecord>;
 
-const REQUIRED_FIELDS: [&str; 13] = [
+const REQUIRED_FIELDS: [&str; 14] = [
     "schema_version",
     "record_id",
     "run_id",
@@ -33,9 +33,21 @@ const REQUIRED_FIELDS: [&str; 13] = [
     "config",
     "seed",
     "metric",
+    "unit",
     "value",
     "status",
     "notes",
+];
+
+const OPTIONAL_TOP_LEVEL_FIELDS: [&str; 8] = [
+    "supersedes_record_id",
+    "dataset",
+    "model",
+    "evaluator",
+    "artifacts",
+    "cost",
+    "env",
+    "comparison",
 ];
 
 fn missing_field(line: usize, field: &str) -> InvalidRecord {
@@ -43,6 +55,22 @@ fn missing_field(line: usize, field: &str) -> InvalidRecord {
         line,
         field: field.to_string(),
         reason: "missing required field".to_string(),
+    }
+}
+
+fn is_finite_number(value: &Value) -> bool {
+    match value {
+        Value::Number(n) => n.as_f64().is_some_and(|f| f.is_finite()),
+        _ => false,
+    }
+}
+
+fn has_negative_zero(val: &Value) -> bool {
+    match val {
+        Value::Number(n) => n.as_f64().is_some_and(|f| f == 0.0 && f.is_sign_negative()),
+        Value::Array(arr) => arr.iter().any(has_negative_zero),
+        Value::Object(map) => map.values().any(has_negative_zero),
+        _ => false,
     }
 }
 
@@ -85,8 +113,13 @@ fn core_field_error(line: usize, obj: &Map<String, Value>, fallback: String) -> 
         ),
         ("seed", check_core_field::<Option<u64>>(obj, "seed")),
         ("metric", check_core_field::<String>(obj, "metric")),
+        ("unit", check_core_field::<Unit>(obj, "unit")),
         ("status", check_core_field::<Status>(obj, "status")),
         ("notes", check_core_field::<String>(obj, "notes")),
+        (
+            "supersedes_record_id",
+            check_core_field::<Option<String>>(obj, "supersedes_record_id"),
+        ),
     ];
     for (field, err) in checks {
         if let Some(reason) = err {
@@ -151,6 +184,65 @@ pub fn validate_record(record: InputRecord) -> ValidationResult {
         }
     }
 
+    for key in obj.keys() {
+        if !REQUIRED_FIELDS.contains(&key.as_str())
+            && !OPTIONAL_TOP_LEVEL_FIELDS.contains(&key.as_str())
+        {
+            return Err(InvalidRecord {
+                line,
+                field: key.clone(),
+                reason: "unknown top-level field".to_string(),
+            });
+        }
+    }
+
+    if serde_json::from_value::<Unit>(obj["unit"].clone())
+        .is_ok_and(|unit| unit.requires_env())
+    {
+        match obj.get("env") {
+            None | Some(Value::Null) => {
+                return Err(InvalidRecord {
+                    line,
+                    field: "env".to_string(),
+                    reason: "unit requires env block".to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    if let Ok(status) = serde_json::from_value::<Status>(obj["status"].clone()) {
+        let value = &obj["value"];
+        match status {
+            Status::Ok => {
+                if !is_finite_number(value) {
+                    return Err(InvalidRecord {
+                        line,
+                        field: "value".to_string(),
+                        reason: "value must be a finite number when status is ok".to_string(),
+                    });
+                }
+            }
+            _ => {
+                if !value.is_null() && !is_finite_number(value) {
+                    return Err(InvalidRecord {
+                        line,
+                        field: "value".to_string(),
+                        reason: "value must be a finite number or null".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    if obj.get("config").is_some_and(has_negative_zero) {
+        return Err(InvalidRecord {
+            line,
+            field: "config".to_string(),
+            reason: "-0.0 is not allowed in config".to_string(),
+        });
+    }
+
     validate_optional_block::<Dataset>(line, &obj, "dataset")?;
     validate_optional_block::<Model>(line, &obj, "model")?;
     validate_optional_block::<Evaluator>(line, &obj, "evaluator")?;
@@ -201,10 +293,260 @@ mod tests {
             "config": {},
             "seed": seed,
             "metric": "accuracy",
+            "unit": "ratio",
             "value": 0.95,
             "status": "ok",
             "notes": ""
         })
+    }
+
+    #[test]
+    fn unit_is_required_and_enforces_closed_vocabulary() {
+        let mut without_unit = core_record(Value::from(1337));
+        without_unit.as_object_mut().unwrap().remove("unit");
+        let Err(err) = validate_record(InputRecord {
+            line: 20,
+            value: without_unit,
+        }) else {
+            panic!("missing unit should be rejected");
+        };
+        assert_eq!(err.line, 20);
+        assert_eq!(err.field, "unit");
+        assert_eq!(err.reason, "missing required field");
+
+        let mut invalid_unit = core_record(Value::from(1337));
+        invalid_unit["unit"] = json!("kilograms");
+        let Err(err) = validate_record(InputRecord {
+            line: 21,
+            value: invalid_unit,
+        }) else {
+            panic!("unknown unit should be rejected");
+        };
+        assert_eq!(err.line, 21);
+        assert_eq!(err.field, "unit");
+    }
+
+    #[test]
+    fn time_throughput_memory_units_require_env_block() {
+        let env_requiring_units = ["ms", "s", "tokens_per_sec", "items_per_sec", "mb", "gb"];
+        for unit in env_requiring_units {
+            let mut record = core_record(Value::from(1337));
+            record["unit"] = json!(unit);
+            let Err(err) = validate_record(InputRecord {
+                line: 30,
+                value: record.clone(),
+            }) else {
+                panic!("unit {unit} without env should be rejected");
+            };
+            assert_eq!(err.line, 30);
+            assert_eq!(err.field, "env");
+
+            record["env"] = Value::Null;
+            let Err(err_null) = validate_record(InputRecord {
+                line: 31,
+                value: record.clone(),
+            }) else {
+                panic!("unit {unit} with null env should be rejected");
+            };
+            assert_eq!(err_null.line, 31);
+            assert_eq!(err_null.field, "env");
+
+            record["env"] = valid_optional_block("env");
+            assert!(
+                validate_record(InputRecord {
+                    line: 32,
+                    value: record,
+                })
+                .is_ok(),
+                "unit {unit} with valid env should pass"
+            );
+        }
+    }
+
+    #[test]
+    fn supersedes_record_id_is_optional_string() {
+        let mut with_str = core_record(Value::from(1337));
+        with_str["supersedes_record_id"] = json!("00000000-0000-4000-8000-000000000001");
+        let res = validate_record(InputRecord {
+            line: 35,
+            value: with_str,
+        });
+        assert!(res.is_ok());
+        assert_eq!(
+            res.unwrap().supersedes_record_id,
+            Some("00000000-0000-4000-8000-000000000001".to_string())
+        );
+
+        let mut with_null = core_record(Value::from(1337));
+        with_null["supersedes_record_id"] = Value::Null;
+        let res = validate_record(InputRecord {
+            line: 36,
+            value: with_null,
+        });
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().supersedes_record_id, None);
+
+        let mut with_num = core_record(Value::from(1337));
+        with_num["supersedes_record_id"] = json!(12345);
+        let Err(err) = validate_record(InputRecord {
+            line: 37,
+            value: with_num,
+        }) else {
+            panic!("numeric supersedes_record_id should be rejected");
+        };
+        assert_eq!(err.line, 37);
+        assert_eq!(err.field, "supersedes_record_id");
+    }
+
+    #[test]
+    fn value_must_be_finite_number_when_status_is_ok_and_may_be_null_otherwise() {
+        let mut string_val = core_record(Value::from(1337));
+        string_val["status"] = json!("ok");
+        string_val["value"] = json!("not-a-number");
+        let Err(err) = validate_record(InputRecord {
+            line: 40,
+            value: string_val,
+        }) else {
+            panic!("string value with status ok should be rejected");
+        };
+        assert_eq!(err.line, 40);
+        assert_eq!(err.field, "value");
+
+        let mut null_val = core_record(Value::from(1337));
+        null_val["status"] = json!("ok");
+        null_val["value"] = Value::Null;
+        let Err(err) = validate_record(InputRecord {
+            line: 41,
+            value: null_val,
+        }) else {
+            panic!("null value with status ok should be rejected");
+        };
+        assert_eq!(err.line, 41);
+        assert_eq!(err.field, "value");
+
+        let mut valid_val = core_record(Value::from(1337));
+        valid_val["status"] = json!("ok");
+        valid_val["value"] = json!(12.34);
+        assert!(
+            validate_record(InputRecord {
+                line: 42,
+                value: valid_val,
+            })
+            .is_ok()
+        );
+
+        let mut oom_null = core_record(Value::from(1337));
+        oom_null["status"] = json!("oom");
+        oom_null["value"] = Value::Null;
+        assert!(
+            validate_record(InputRecord {
+                line: 43,
+                value: oom_null,
+            })
+            .is_ok()
+        );
+
+        let mut oom_num = core_record(Value::from(1337));
+        oom_num["status"] = json!("oom");
+        oom_num["value"] = json!(0.0);
+        assert!(
+            validate_record(InputRecord {
+                line: 44,
+                value: oom_num,
+            })
+            .is_ok()
+        );
+
+        let mut oom_str = core_record(Value::from(1337));
+        oom_str["status"] = json!("oom");
+        oom_str["value"] = json!("failed");
+        let Err(err) = validate_record(InputRecord {
+            line: 45,
+            value: oom_str,
+        }) else {
+            panic!("string value with status oom should be rejected");
+        };
+        assert_eq!(err.line, 45);
+        assert_eq!(err.field, "value");
+    }
+
+    #[test]
+    fn negative_zero_in_config_is_rejected() {
+        let raw = r#"{
+            "schema_version": "2.0",
+            "record_id": "record-1",
+            "run_id": "run-1",
+            "project": "benchmark",
+            "timestamp": "2026-09-21T12:00:00Z",
+            "git_commit": "abc123",
+            "git_dirty": false,
+            "config": { "lr": -0.0 },
+            "seed": 1337,
+            "metric": "accuracy",
+            "unit": "ratio",
+            "value": 0.95,
+            "status": "ok",
+            "notes": ""
+        }"#;
+        let value: Value = serde_json::from_str(raw).unwrap();
+        let Err(err) = validate_record(InputRecord { line: 50, value }) else {
+            panic!("-0.0 in config should be rejected");
+        };
+        assert_eq!(err.line, 50);
+        assert_eq!(err.field, "config");
+
+        // Nested in array or object
+        let raw_nested = r#"{
+            "schema_version": "2.0",
+            "record_id": "record-1",
+            "run_id": "run-1",
+            "project": "benchmark",
+            "timestamp": "2026-09-21T12:00:00Z",
+            "git_commit": "abc123",
+            "git_dirty": false,
+            "config": { "nested": { "arr": [-0.0] } },
+            "seed": 1337,
+            "metric": "accuracy",
+            "unit": "ratio",
+            "value": 0.95,
+            "status": "ok",
+            "notes": ""
+        }"#;
+        let nested_value: Value = serde_json::from_str(raw_nested).unwrap();
+        let Err(err_nested) = validate_record(InputRecord {
+            line: 51,
+            value: nested_value,
+        }) else {
+            panic!("nested -0.0 in config should be rejected");
+        };
+        assert_eq!(err_nested.line, 51);
+        assert_eq!(err_nested.field, "config");
+
+        // Positive 0.0 is allowed
+        let raw_pos = r#"{
+            "schema_version": "2.0",
+            "record_id": "record-1",
+            "run_id": "run-1",
+            "project": "benchmark",
+            "timestamp": "2026-09-21T12:00:00Z",
+            "git_commit": "abc123",
+            "git_dirty": false,
+            "config": { "lr": 0.0 },
+            "seed": 1337,
+            "metric": "accuracy",
+            "unit": "ratio",
+            "value": 0.95,
+            "status": "ok",
+            "notes": ""
+        }"#;
+        let pos_value: Value = serde_json::from_str(raw_pos).unwrap();
+        assert!(
+            validate_record(InputRecord {
+                line: 52,
+                value: pos_value,
+            })
+            .is_ok()
+        );
     }
 
     #[test]
@@ -426,13 +768,23 @@ mod tests {
     }
 
     #[test]
-    fn unknown_top_level_and_nested_fields_are_accepted() {
+    fn unknown_top_level_key_is_rejected_but_nested_unknown_keys_are_accepted() {
         let mut value = core_record(Value::from(1337));
         value["unknown_top_level"] = json!(true);
-        value["dataset"] = valid_optional_block("dataset");
-        value["dataset"]["unknown_nested"] = json!({"accepted": true});
+        let Err(err) = validate_record(InputRecord { line: 14, value }) else {
+            panic!("unknown top level key should be rejected");
+        };
+        assert_eq!(err.line, 14);
+        assert_eq!(err.field, "unknown_top_level");
 
-        assert!(validate_record(InputRecord { line: 14, value }).is_ok());
+        let mut nested_value = core_record(Value::from(1337));
+        nested_value["dataset"] = valid_optional_block("dataset");
+        nested_value["dataset"]["unknown_nested"] = json!({"accepted": true});
+        assert!(validate_record(InputRecord {
+            line: 15,
+            value: nested_value
+        })
+        .is_ok());
     }
 
     #[test]

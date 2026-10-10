@@ -27,7 +27,7 @@ fn valid_v2_records_are_accepted() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 3\nRejected records: 0\n"
+        "Eval-schema v2 validation\nAccepted records: 4\nRejected records: 0\n"
     );
     assert!(output.stderr.is_empty());
 }
@@ -53,20 +53,32 @@ fn invalid_records_report_line_field_and_reason() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 0\nRejected records: 5\n"
+        "Eval-schema v2 validation\nAccepted records: 0\nRejected records: 11\n"
     );
     let errors = String::from_utf8(output.stderr).unwrap();
     let lines: Vec<&str> = errors.lines().collect();
-    assert_eq!(lines.len(), 5, "expected one rejection per line, got:\n{errors}");
-    assert!(lines[0].starts_with("line 1: metric:"), "got: {}", lines[0]);
-    assert!(lines[1].starts_with("line 2: seed:"), "got: {}", lines[1]);
-    assert!(lines[2].starts_with("line 3: status:"), "got: {}", lines[2]);
-    assert!(
-        lines[3].starts_with("line 4: dataset.split:"),
-        "got: {}",
-        lines[3]
-    );
-    assert!(lines[4].starts_with("line 5: <json>:"), "got: {}", lines[4]);
+    let expected_prefixes = [
+        "line 1: metric:",
+        "line 2: seed:",
+        "line 3: status:",
+        "line 4: dataset.split:",
+        "line 5: <json>:",
+        "line 6: unit:",
+        "line 7: unit:",
+        "line 8: env:",
+        "line 9: value:",
+        "line 10: unknown_key:",
+        "line 11: config:",
+    ];
+    for (i, prefix) in expected_prefixes.iter().enumerate() {
+        assert!(
+            lines[i].starts_with(prefix),
+            "line {}: expected prefix '{}', got '{}'",
+            i + 1,
+            prefix,
+            lines[i]
+        );
+    }
 }
 
 #[test]

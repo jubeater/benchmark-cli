@@ -21,6 +21,39 @@ pub enum Status {
     Cancelled,
 }
 
+#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
+pub enum Unit {
+    #[serde(rename = "ms")]
+    Ms,
+    #[serde(rename = "s")]
+    S,
+    #[serde(rename = "tokens_per_sec")]
+    TokensPerSec,
+    #[serde(rename = "items_per_sec")]
+    ItemsPerSec,
+    #[serde(rename = "mb")]
+    Mb,
+    #[serde(rename = "gb")]
+    Gb,
+    #[serde(rename = "ratio")]
+    Ratio,
+    #[serde(rename = "count")]
+    Count,
+    #[serde(rename = "usd")]
+    Usd,
+    #[serde(rename = "score")]
+    Score,
+}
+
+impl Unit {
+    pub fn requires_env(&self) -> bool {
+        matches!(
+            self,
+            Unit::Ms | Unit::S | Unit::TokensPerSec | Unit::ItemsPerSec | Unit::Mb | Unit::Gb
+        )
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct EvalRecordV2 {
     pub schema_version: SchemaVersion,
@@ -35,9 +68,11 @@ pub struct EvalRecordV2 {
     pub seed: Option<u64>,
 
     pub metric: String,
+    pub unit: Unit,
     pub value: Value,
     pub status: Status,
     pub notes: String,
+    pub supersedes_record_id: Option<String>,
 
     pub dataset: Option<Dataset>,
     pub model: Option<Model>,

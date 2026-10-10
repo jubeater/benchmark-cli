@@ -114,7 +114,7 @@ mod tests {
         let result = parse_lines(concat!(env!("CARGO_MANIFEST_DIR"), "/data/v2/valid.jsonl"));
 
         let parsed = result.unwrap();
-        assert_eq!(parsed.records.len(), 3);
+        assert_eq!(parsed.records.len(), 4);
         assert!(parsed.errors.is_empty());
     }
 
