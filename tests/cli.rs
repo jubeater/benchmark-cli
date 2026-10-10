@@ -21,17 +21,19 @@ fn run_input(path: &str) -> Output {
 }
 
 #[test]
-fn accidental_duplicate_is_rejected_while_corrections_pass_through() {
+fn identity_fixture_rejects_invalid_corrections_and_reports_superseded_records() {
     let output = run_fixture("identity.jsonl");
 
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 3\nRejected records: 1\n"
+        "Eval-schema v2 validation\nAccepted records: 3\nRejected records: 3\nSuperseded records: 1\n"
     );
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
-        "line 2: measurement_key: duplicate measurement (first seen on line 1)\n"
+        "line 2: measurement_key: duplicate measurement (first seen on line 1)\n\
+         line 4: supersedes_record_id: dangling reference: record 'missing-record' was not accepted earlier\n\
+         line 6: supersedes_record_id: target record 'identity-original' has a different measurement_key\n"
     );
 }
 
@@ -42,7 +44,7 @@ fn valid_v2_records_are_accepted() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 4\nRejected records: 0\n"
+        "Eval-schema v2 validation\nAccepted records: 4\nRejected records: 0\nSuperseded records: 1\n"
     );
     assert!(output.stderr.is_empty());
 }
@@ -54,7 +56,7 @@ fn parse_and_validation_failures_are_counted_as_rejected_records() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 1\nRejected records: 2\n"
+        "Eval-schema v2 validation\nAccepted records: 1\nRejected records: 2\nSuperseded records: 0\n"
     );
     let errors = String::from_utf8(output.stderr).unwrap();
     assert!(errors.contains("line 2:"));
@@ -68,7 +70,7 @@ fn invalid_records_report_line_field_and_reason() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 0\nRejected records: 11\n"
+        "Eval-schema v2 validation\nAccepted records: 0\nRejected records: 11\nSuperseded records: 0\n"
     );
     let errors = String::from_utf8(output.stderr).unwrap();
     let lines: Vec<&str> = errors.lines().collect();

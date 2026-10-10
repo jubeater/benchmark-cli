@@ -14,8 +14,9 @@ summary:
 
 ```text
 Eval-schema v2 validation
-Accepted records: 3
+Accepted records: 4
 Rejected records: 0
+Superseded records: 1
 ```
 
 An unsuccessful measurement (for example `status: "oom"`) can still be an
@@ -35,14 +36,24 @@ remain distinct. A duplicate is rejected with the original line number:
 line 2: measurement_key: duplicate measurement (first seen on line 1)
 ```
 
-Records with a non-null `supersedes_record_id` pass through this duplicate check.
-Correction target validation and replacement are deferred to ticket #5.
+A correction's `supersedes_record_id` must identify a record accepted earlier in
+the file with the same measurement key. Dangling references, corrections before
+their target, wrong-target corrections, and corrections of unseen measurements
+are rejected on the `supersedes_record_id` field. Invalid records do not reserve
+measurement keys or become valid correction targets.
+
+Records are resolved in file order in one pass. Corrections replace the effective
+record for their measurement; chains resolve to the last accepted correction.
+The resolver exposes exactly one effective record per measurement key for future
+aggregation. Accepted counts include superseded records; the superseded count
+reports how many accepted records were displaced by corrections.
 
 The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
 blocks. The fixture in `data/v2/invalid.jsonl` covers one defect per line
 (missing field, wrong type, bad enum, malformed block, bad JSON). Expected
 outcomes are documented in `data/v2/README`. The identity fixture covers an
-accidental duplicate and correction pass-through.
+accidental duplicate, a valid correction, a dangling correction, and a correction
+that targets a different measurement.
 
 Run the checks with:
 
@@ -50,3 +61,14 @@ Run the checks with:
 cargo test
 cargo clippy --all-targets -- -D warnings
 ```
+
+## Known limitations
+
+Not handled, by design — none occur if records follow the schema:
+
+- Duplicate keys inside one JSON line: last value wins.
+- Integers beyond 64-bit are rounded to f64; distinct values can hash the same.
+- Two corrections of the same record (fork): the later one in the file wins.
+- Unknown keys inside blocks are accepted.
+- Model/env consistency within a group is not checked.
+- LLM-run rules and judge-calibration rules are not enforced.

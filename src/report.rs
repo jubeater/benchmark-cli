@@ -1,5 +1,5 @@
-pub fn render(accepted: usize, rejected: usize) -> String {
+pub fn render(accepted: usize, rejected: usize, superseded: usize) -> String {
     format!(
-        "Eval-schema v2 validation\nAccepted records: {accepted}\nRejected records: {rejected}\n"
+        "Eval-schema v2 validation\nAccepted records: {accepted}\nRejected records: {rejected}\nSuperseded records: {superseded}\n"
     )
 }

@@ -1,4 +1,4 @@
-use benchmark_cli::identity::DuplicateFilter;
+use benchmark_cli::identity::RecordResolver;
 use benchmark_cli::input::parse_lines;
 use benchmark_cli::report::render;
 use clap::Parser;
@@ -44,9 +44,9 @@ fn run(args: Args) -> Result<i32, AppError> {
             )
         })
         .collect();
-    let mut duplicates = DuplicateFilter::default();
+    let mut resolver = RecordResolver::default();
     for record in parsed_result.records {
-        match duplicates.validate_record(record) {
+        match resolver.validate_record(record) {
             Ok(_) => accepted += 1,
             Err(error) => {
                 rejections.push((error.line, error.to_string()));
@@ -59,7 +59,7 @@ fn run(args: Args) -> Result<i32, AppError> {
     }
     let rejected = rejections.len();
 
-    let output_string = render(accepted, rejected);
+    let output_string = render(accepted, rejected, resolver.superseded_count());
     print!("{output_string}");
 
     if rejected > 0 { Ok(1) } else { Ok(0) }
