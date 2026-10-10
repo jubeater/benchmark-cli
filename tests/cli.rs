@@ -43,6 +43,42 @@ fn identity_fixture_rejects_invalid_corrections_and_reports_superseded_records()
 }
 
 #[test]
+fn reused_record_id_fixture_rejects_reuse_and_accepts_the_originals_correction() {
+    let output = run_fixture("record-id-reuse.jsonl");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "Eval-schema v2 validation\nAccepted records: 2\nRejected records: 1\nSuperseded records: 1\n"
+    );
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "line 2: record_id: duplicate record_id (first seen on line 1)\n"
+    );
+
+    let output = run_fixture_with_args("record-id-reuse.jsonl", &["--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "line 2: record_id: duplicate record_id (first seen on line 1)\n"
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        parsed,
+        serde_json::json!({
+            "output_version": 1,
+            "accepted": 2,
+            "rejected": 1,
+            "superseded": 1,
+            "complete": false,
+            "rejections": [
+                { "line": 2, "field": "record_id", "reason": "duplicate record_id (first seen on line 1)" }
+            ],
+            "groups": []
+        })
+    );
+}
+
+#[test]
 fn valid_v2_records_are_accepted() {
     let output = run_fixture("valid.jsonl");
 

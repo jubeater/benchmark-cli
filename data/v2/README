@@ -50,6 +50,17 @@ Line 6: correction of the seed-42 measurement targeting the seed-1337 original,
 Two effective records remain: identity-correction (value 0.9) and identity-other
 (value 0.7). The original counts as superseded; rejected records do not.
 
+record-id-reuse.jsonl — 2 accepted records, 1 rejected record, 1 superseded record, exit code 1.
+
+Line 1: original measurement A (seed 1337), accepted.
+Line 2: measurement B (seed 42) reuses A's record_id, rejected:
+        `line 2: record_id: duplicate record_id (first seen on line 1)`.
+Line 3: valid correction of A, accepted and replaces A with value 0.9.
+One effective record remains: identity-correction. The rejected B does not
+overwrite the correction lookup or reserve its measurement key. The original
+counts as superseded. Text and JSON modes report the same rejection and counts;
+JSON has complete=false and groups=[] because the input contains a rejection.
+
 sweep.jsonl — 10 accepted records, 0 rejected records, 0 superseded records, exit code 0.
 A batch size sweep (batch sizes 1, 8, 32 × 3 seeds) with one unsuccessful measurement
 (seed 3 on batch 8 is status oom with null value) and one pre-computed aggregate record
@@ -89,4 +100,3 @@ Records with an "aggregate" key in config are excluded from aggregation. The rem
     warning: none (3 ok seeds)
 
 The aggregate record (line 10) appears nowhere in the aggregated statistics.
-

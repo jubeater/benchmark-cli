@@ -36,11 +36,18 @@ remain distinct. A duplicate is rejected with the original line number:
 line 2: measurement_key: duplicate measurement (first seen on line 1)
 ```
 
+Each accepted record must have a unique `record_id`, including corrections.
+Reusing an accepted ID is rejected with its first accepted line number:
+
+```text
+line 2: record_id: duplicate record_id (first seen on line 1)
+```
+
 A correction's `supersedes_record_id` must identify a record accepted earlier in
 the file with the same measurement key. Dangling references, corrections before
 their target, wrong-target corrections, and corrections of unseen measurements
 are rejected on the `supersedes_record_id` field. Invalid records do not reserve
-measurement keys or become valid correction targets.
+measurement keys or record IDs, or become valid correction targets.
 
 Records are resolved in file order in one pass. Corrections replace the effective
 record for their measurement; chains resolve to the last accepted correction.
@@ -163,7 +170,9 @@ The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
 blocks. The fixture in `data/v2/invalid.jsonl` covers one defect per line
 (missing field, wrong type, bad enum, malformed block, bad JSON). The identity fixture
 covers an accidental duplicate, a valid correction, a dangling correction, and a correction
-that targets a different measurement. The sweep fixture in `data/v2/sweep.jsonl` covers
+that targets a different measurement. The `data/v2/record-id-reuse.jsonl` fixture
+covers a reused record ID with a different seed followed by a valid correction
+of the original. The sweep fixture in `data/v2/sweep.jsonl` covers
 a batch size sweep across seeds with an OOM measurement, an aggregate record, and hand-computed
 medians. Expected outcomes are documented in `data/v2/README`.
 
