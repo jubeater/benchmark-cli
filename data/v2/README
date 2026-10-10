@@ -8,6 +8,19 @@ Line 3: null seed and optional blocks, status oom with null value. An unsuccessf
 Line 4: valid correction of line 1, replaces it in the effective set.
         Three effective records remain; line 1 counts as superseded.
 
+blank-lines.jsonl — 4 accepted records, 0 rejected records, 1 superseded record, exit code 0.
+The same records as valid.jsonl appear on physical lines 3, 6, 9, and 12.
+Empty lines and lines containing spaces and tabs precede, separate, and follow
+the records. They are skipped; both output formats match valid.jsonl exactly.
+
+blank-lines-invalid.jsonl — 1 accepted record, 2 rejected records, 0 superseded records, exit code 1.
+The same records as mixed.jsonl appear on physical lines 3, 6, and 9, with
+empty and whitespace-only lines at the start, in the middle, and at the end.
+Line 3 is accepted; line 6 is rejected on schema_version (missing required
+field), and line 9 is rejected on <json> (malformed JSON). Both output formats
+report the physical line numbers, and only the two defective records count
+as rejections.
+
 invalid.jsonl — 0 accepted records, 11 rejected records, 0 superseded records, exit code 1.
 Each line has exactly one defect; each produces exactly one rejection on
 stderr as `line N: <field>: <reason>`.
@@ -49,6 +62,24 @@ Line 6: correction of the seed-42 measurement targeting the seed-1337 original,
         `line 6: supersedes_record_id: target record 'identity-original' has a different measurement_key`.
 Two effective records remain: identity-correction (value 0.9) and identity-other
 (value 0.7). The original counts as superseded; rejected records do not.
+They aggregate into one group with n_attempted = 2, n_ok = 2, median = 0.8,
+min = 0.7, max = 0.9, and a fewer-than-3-seeds warning. Rejected corrections
+leave the effective records unchanged. Text shows the rejected-records notice
+above the table; JSON has complete=false and this populated group.
+
+record-id-reuse.jsonl — 2 accepted records, 1 rejected record, 1 superseded record, exit code 1.
+
+Line 1: original measurement A (seed 1337), accepted.
+Line 2: measurement B (seed 42) reuses A's record_id, rejected:
+        `line 2: record_id: duplicate record_id (first seen on line 1)`.
+Line 3: valid correction of A, accepted and replaces A with value 0.9.
+One effective record remains: identity-correction. The rejected B does not
+overwrite the correction lookup or reserve its measurement key. The original
+counts as superseded. Text and JSON modes report the same rejection and counts;
+the effective correction aggregates into one group with n_attempted = 1,
+n_ok = 1, median = min = max = 0.9, and a fewer-than-3-seeds warning.
+Text shows the rejected-records notice above the table; JSON has complete=false
+and this populated group.
 
 sweep.jsonl — 10 accepted records, 0 rejected records, 0 superseded records, exit code 0.
 A batch size sweep (batch sizes 1, 8, 32 × 3 seeds) with one unsuccessful measurement
@@ -90,3 +121,12 @@ Records with an "aggregate" key in config are excluded from aggregation. The rem
 
 The aggregate record (line 10) appears nowhere in the aggregated statistics.
 
+sweep-partial.jsonl — 10 accepted records, 1 rejected record, 0 superseded records, exit code 1.
+Lines 1–10 are the clean sweep above. Line 11 is malformed JSON, reported on
+stderr as `line 11: <json>: EOF while parsing a value at line 1 column 18`.
+Both output formats retain exactly the same 3 groups and statistics as the clean
+sweep, including the OOM count, aggregate exclusion, and warning. Text shows
+`Incomplete result: statistics exclude rejected records (count: 1).` above the
+table. JSON has complete=false, rejected=1, and populated groups. The complete
+flag means no input was rejected; it does not describe known limitations or
+measurement success.

@@ -1,0 +1,11 @@
+
+ 	
+{"schema_version":"2.0","record_id":"00000000-0000-4000-8000-000000000003","run_id":"00000000-0000-4000-8000-000000000010","project":"benchmark","timestamp":"2026-10-09T12:02:00Z","git_commit":"79e18e325900d533d0e90ccc6ec469a03ece1cb7","git_dirty":false,"config":{"batch_size":32},"seed":null,"metric":"accuracy","unit":"ratio","value":null,"status":"oom","notes":"A failed measurement is still a valid record."}
+
+ 	
+{}
+
+ 	
+{"schema_version":
+
+ 	

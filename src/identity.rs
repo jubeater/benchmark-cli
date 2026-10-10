@@ -10,8 +10,13 @@ use std::collections::HashMap;
 #[derive(Default)]
 pub struct RecordResolver {
     measurements: HashMap<String, EffectiveMeasurement>,
-    record_keys: HashMap<String, String>,
+    accepted_records: HashMap<String, AcceptedRecord>,
     superseded: usize,
+}
+
+struct AcceptedRecord {
+    measurement_key: String,
+    first_line: usize,
 }
 
 #[derive(Debug)]
@@ -29,6 +34,16 @@ impl RecordResolver {
             line: record.line,
             value: record.value.clone(),
         })?;
+        if let Some(accepted) = self.accepted_records.get(&validated.record_id) {
+            return Err(InvalidRecord {
+                line: record.line,
+                field: "record_id".to_string(),
+                reason: format!(
+                    "duplicate record_id (first seen on line {})",
+                    accepted.first_line
+                ),
+            });
+        }
         // Use the original JSON: typed optional fields lose absent/null distinctions.
         let key = measurement_key(&record.value);
         let config_hash = config_hash(&record.value["config"]);
@@ -36,11 +51,16 @@ impl RecordResolver {
         let evaluator_fp = evaluator_fingerprint(record.value.get("evaluator"));
 
         if let Some(target) = &validated.supersedes_record_id {
-            let target_key = self.record_keys.get(target).ok_or_else(|| InvalidRecord {
-                line: record.line,
-                field: "supersedes_record_id".to_string(),
-                reason: format!("dangling reference: record '{target}' was not accepted earlier"),
-            })?;
+            let accepted_target =
+                self.accepted_records
+                    .get(target)
+                    .ok_or_else(|| InvalidRecord {
+                        line: record.line,
+                        field: "supersedes_record_id".to_string(),
+                        reason: format!(
+                            "dangling reference: record '{target}' was not accepted earlier"
+                        ),
+                    })?;
             if !self.measurements.contains_key(&key) {
                 return Err(InvalidRecord {
                     line: record.line,
@@ -48,7 +68,7 @@ impl RecordResolver {
                     reason: "nothing to correct: measurement_key has not been seen".to_string(),
                 });
             }
-            if target_key != &key {
+            if accepted_target.measurement_key != key {
                 return Err(InvalidRecord {
                     line: record.line,
                     field: "supersedes_record_id".to_string(),
@@ -68,8 +88,13 @@ impl RecordResolver {
                 ),
             });
         }
-        self.record_keys
-            .insert(validated.record_id.clone(), key.clone());
+        self.accepted_records.insert(
+            validated.record_id.clone(),
+            AcceptedRecord {
+                measurement_key: key.clone(),
+                first_line: record.line,
+            },
+        );
         if let Some(measurement) = self.measurements.get_mut(&key) {
             measurement.record = validated;
             measurement.config_hash = config_hash;
@@ -154,6 +179,99 @@ mod tests {
                 .reason
                 .contains("line 1")
         );
+    }
+
+    #[test]
+    fn reused_record_id_is_rejected_without_breaking_correction_lookup() {
+        let mut resolver = RecordResolver::default();
+        resolver.validate_record(record(4)).unwrap();
+
+        let mut reused = record(7);
+        reused.value["record_id"] = serde_json::json!("record-4");
+        reused.value["seed"] = serde_json::json!(42);
+        let error = resolver.validate_record(reused).unwrap_err();
+        assert_eq!(error.line, 7);
+        assert_eq!(error.field, "record_id");
+        assert_eq!(error.reason, "duplicate record_id (first seen on line 4)");
+
+        let mut correction = record(9);
+        correction.value["supersedes_record_id"] = serde_json::json!("record-4");
+        correction.value["value"] = serde_json::json!(0.8);
+        resolver.validate_record(correction).unwrap();
+
+        let effective: Vec<_> = resolver.effective_records().collect();
+        assert_eq!(effective.len(), 1);
+        assert_eq!(effective[0].record_id, "record-9");
+        assert_eq!(effective[0].value, serde_json::json!(0.8));
+        assert_eq!(resolver.superseded_count(), 1);
+    }
+
+    #[test]
+    fn reused_ids_are_rejected_for_same_measurements_and_corrections() {
+        let mut resolver = RecordResolver::default();
+        resolver.validate_record(record(4)).unwrap();
+        let mut correction = record(7);
+        correction.value["supersedes_record_id"] = serde_json::json!("record-4");
+        resolver.validate_record(correction).unwrap();
+
+        for (line, reused_id, first_line, target) in [
+            (9, "record-4", 4, None),
+            (10, "record-4", 4, Some("record-7")),
+            (12, "record-7", 7, Some("record-4")),
+        ] {
+            let mut reused = record(line);
+            reused.value["record_id"] = serde_json::json!(reused_id);
+            if let Some(target) = target {
+                reused.value["supersedes_record_id"] = serde_json::json!(target);
+            }
+            let error = resolver.validate_record(reused).unwrap_err();
+            assert_eq!(error.line, line);
+            assert_eq!(error.field, "record_id");
+            assert_eq!(
+                error.reason,
+                format!("duplicate record_id (first seen on line {first_line})")
+            );
+        }
+        assert_eq!(resolver.effective_records().count(), 1);
+        assert_eq!(
+            resolver.effective_records().next().unwrap().record_id,
+            "record-7"
+        );
+        assert_eq!(resolver.superseded_count(), 1);
+    }
+
+    #[test]
+    fn rejected_records_do_not_reserve_record_ids() {
+        for rejection_field in ["unit", "measurement_key", "supersedes_record_id"] {
+            let mut resolver = RecordResolver::default();
+            resolver.validate_record(record(1)).unwrap();
+            let mut rejected = record(2);
+            match rejection_field {
+                "unit" => {
+                    rejected.value.as_object_mut().unwrap().remove("unit");
+                }
+                "supersedes_record_id" => {
+                    rejected.value["supersedes_record_id"] = serde_json::json!("missing-record");
+                }
+                _ => {}
+            }
+            assert_eq!(
+                resolver.validate_record(rejected).unwrap_err().field,
+                rejection_field
+            );
+
+            let mut reused = record(3);
+            reused.value["record_id"] = serde_json::json!("record-2");
+            reused.value["seed"] = serde_json::json!(42);
+            resolver.validate_record(reused).unwrap();
+
+            let mut correction = record(4);
+            correction.value["seed"] = serde_json::json!(42);
+            correction.value["supersedes_record_id"] = serde_json::json!("record-2");
+            resolver.validate_record(correction).unwrap();
+            assert_eq!(resolver.effective_records().count(), 2);
+            assert_eq!(resolver.superseded_count(), 1);
+        }
     }
 
     #[test]
