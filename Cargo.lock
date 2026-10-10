@@ -3,16 +3,6 @@
 version = 4
 
 [[package]]
-name = "AI-log-analysis"
-version = "0.1.0"
-dependencies = [
- "clap",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -60,6 +50,16 @@ dependencies = [
  "anstyle",
  "once_cell_polyfill",
  "windows-sys",
+]
+
+[[package]]
+name = "benchmark-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

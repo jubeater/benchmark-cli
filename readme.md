@@ -9,6 +9,9 @@ cargo run -- --input data/v2/valid.jsonl
 
 For your own results, pass `--input path/to/results.jsonl` (or `-i`).
 
+To run it from anywhere, install the binary once with `cargo install --path .`
+and call `benchmark-cli --input path/to/results.jsonl`.
+
 Empty and whitespace-only lines are skipped. They do not count as accepted or
 rejected records; reported line numbers still refer to physical lines in the file.
 
