@@ -1,3 +1,4 @@
+use benchmark_cli::aggregate::aggregate_records;
 use benchmark_cli::identity::RecordResolver;
 use benchmark_cli::input::parse_lines;
 use benchmark_cli::report::render;
@@ -59,7 +60,12 @@ fn run(args: Args) -> Result<i32, AppError> {
     }
     let rejected = rejections.len();
 
-    let output_string = render(accepted, rejected, resolver.superseded_count());
+    let output_string = if rejected == 0 {
+        let groups = aggregate_records(resolver.effective_measurements());
+        render(accepted, rejected, resolver.superseded_count(), &groups)
+    } else {
+        render(accepted, rejected, resolver.superseded_count(), &[])
+    };
     print!("{output_string}");
 
     if rejected > 0 { Ok(1) } else { Ok(0) }

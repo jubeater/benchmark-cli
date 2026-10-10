@@ -48,12 +48,32 @@ The resolver exposes exactly one effective record per measurement key for future
 aggregation. Accepted counts include superseded records; the superseded count
 reports how many accepted records were displaced by corrections.
 
+When records are aggregated across seeds, effective records are grouped by
+`(run_id, metric, unit, config_hash, dataset_fingerprint, evaluator_fingerprint)` in
+stable sorted order. Records containing an `aggregate` key in their `config`
+(such as `"aggregate": "median_of_3"`) are excluded. The CLI computes `n_attempted`
+across all statuses, `n_ok`, and `median` / `min` / `max` over `status: ok` values.
+For even counts, the median is the mean of the two middle values. When `n_ok = 0`,
+statistics are displayed as `N/A`. A warning is printed for any group with fewer than
+3 `ok` seeds (enforcing the three-seed rule):
+
+```text
+run_id                         | metric         | unit           | config_hash                                                      | dataset_fingerprint | evaluator_fingerprint | n_attempted | n_ok | median | min | max
+-------------------------------+----------------+----------------+------------------------------------------------------------------+---------------------+-----------------------+-------------+------+--------+-----+----
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | 297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749 | null                | null                  |           3 |    3 |    320 | 300 | 350
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | db8be9fbe8f84ff4d2e61f9cf1bfa233deaabd47ecca04dbc7d065c66a175395 | null                | null                  |           3 |    3 |    102 | 100 | 105
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | null                | null                  |           3 |    2 |    205 | 200 | 210
+
+warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
+```
+
 The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
 blocks. The fixture in `data/v2/invalid.jsonl` covers one defect per line
-(missing field, wrong type, bad enum, malformed block, bad JSON). Expected
-outcomes are documented in `data/v2/README`. The identity fixture covers an
-accidental duplicate, a valid correction, a dangling correction, and a correction
-that targets a different measurement.
+(missing field, wrong type, bad enum, malformed block, bad JSON). The identity fixture
+covers an accidental duplicate, a valid correction, a dangling correction, and a correction
+that targets a different measurement. The sweep fixture in `data/v2/sweep.jsonl` covers
+a batch size sweep across seeds with an OOM measurement, an aggregate record, and hand-computed
+medians. Expected outcomes are documented in `data/v2/README`.
 
 Run the checks with:
 

@@ -113,11 +113,11 @@ bootstrap CIs, cost/latency rollups.
 - Warn when `n_ok < 3` (three-seed rule).
 
 **Exit**
-- [ ] `sweep.jsonl` → 3 groups with hand-computed medians.
-- [ ] The `oom` record is counted in `n_attempted`, not in the median
+- [x] `sweep.jsonl` → 3 groups with hand-computed medians.
+- [x] The `oom` record is counted in `n_attempted`, not in the median
       (also covers the even-count median).
-- [ ] The aggregate record is excluded.
-- [ ] Unit test: all-failed group → `n_ok = 0`, null stats.
+- [x] The aggregate record is excluded.
+- [x] Unit test: all-failed group → `n_ok = 0`, null stats.
 
 ## Stage 5 — Output & end-to-end tests (1.5 h)
 

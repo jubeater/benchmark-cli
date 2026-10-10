@@ -1,3 +1,4 @@
+pub mod aggregate;
 pub mod canonical;
 pub mod identity;
 pub mod input;

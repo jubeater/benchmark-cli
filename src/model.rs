@@ -21,7 +21,7 @@ pub enum Status {
     Cancelled,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum Unit {
     #[serde(rename = "ms")]
     Ms,
@@ -51,6 +51,27 @@ impl Unit {
             self,
             Unit::Ms | Unit::S | Unit::TokensPerSec | Unit::ItemsPerSec | Unit::Mb | Unit::Gb
         )
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Unit::Ms => "ms",
+            Unit::S => "s",
+            Unit::TokensPerSec => "tokens_per_sec",
+            Unit::ItemsPerSec => "items_per_sec",
+            Unit::Mb => "mb",
+            Unit::Gb => "gb",
+            Unit::Ratio => "ratio",
+            Unit::Count => "count",
+            Unit::Usd => "usd",
+            Unit::Score => "score",
+        }
+    }
+}
+
+impl std::fmt::Display for Unit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 

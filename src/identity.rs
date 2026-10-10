@@ -1,4 +1,6 @@
-use crate::canonical::measurement_key;
+use crate::canonical::{
+    config_hash, dataset_fingerprint, evaluator_fingerprint, measurement_key,
+};
 use crate::input::InputRecord;
 use crate::model::EvalRecordV2;
 use crate::validator::{InvalidRecord, validate_record};
@@ -7,14 +9,18 @@ use std::collections::HashMap;
 /// Resolve duplicates and corrections in file order, keeping one effective record per key.
 #[derive(Default)]
 pub struct RecordResolver {
-    measurements: HashMap<String, Measurement>,
+    measurements: HashMap<String, EffectiveMeasurement>,
     record_keys: HashMap<String, String>,
     superseded: usize,
 }
 
-struct Measurement {
-    first_line: usize,
-    record: EvalRecordV2,
+#[derive(Debug)]
+pub struct EffectiveMeasurement {
+    pub first_line: usize,
+    pub record: EvalRecordV2,
+    pub config_hash: String,
+    pub dataset_fingerprint: String,
+    pub evaluator_fingerprint: String,
 }
 
 impl RecordResolver {
@@ -25,6 +31,10 @@ impl RecordResolver {
         })?;
         // Use the original JSON: typed optional fields lose absent/null distinctions.
         let key = measurement_key(&record.value);
+        let config_hash = config_hash(&record.value["config"]);
+        let dataset_fp = dataset_fingerprint(record.value.get("dataset"));
+        let evaluator_fp = evaluator_fingerprint(record.value.get("evaluator"));
+
         if let Some(target) = &validated.supersedes_record_id {
             let target_key = self.record_keys.get(target).ok_or_else(|| InvalidRecord {
                 line: record.line,
@@ -62,13 +72,19 @@ impl RecordResolver {
             .insert(validated.record_id.clone(), key.clone());
         if let Some(measurement) = self.measurements.get_mut(&key) {
             measurement.record = validated;
+            measurement.config_hash = config_hash;
+            measurement.dataset_fingerprint = dataset_fp;
+            measurement.evaluator_fingerprint = evaluator_fp;
             self.superseded += 1;
         } else {
             self.measurements.insert(
                 key,
-                Measurement {
+                EffectiveMeasurement {
                     first_line: record.line,
                     record: validated,
+                    config_hash,
+                    dataset_fingerprint: dataset_fp,
+                    evaluator_fingerprint: evaluator_fp,
                 },
             );
         }
@@ -80,6 +96,11 @@ impl RecordResolver {
         self.measurements
             .values()
             .map(|measurement| &measurement.record)
+    }
+
+    /// Effective measurements with precomputed identity hashes.
+    pub fn effective_measurements(&self) -> impl Iterator<Item = &EffectiveMeasurement> {
+        self.measurements.values()
     }
 
     /// Accepted records displaced by later corrections, including forks.
