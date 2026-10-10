@@ -67,6 +67,24 @@ run_id                         | metric         | unit           | config_hash  
 warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
 ```
 
+Passing `--group-by <key>[,<key>...]` shows the chosen config keys as columns in
+the group table so sweeps read naturally (for example `--group-by batch_size`).
+This is presentation only: grouping itself is unchanged and still uses the full
+config hash, so `--group-by` never merges different configurations. Multiple
+keys can be passed as a comma-separated list or by repeating the flag. If a
+group's config lacks a requested key, it renders as `absent`, distinct from an
+explicit `null`:
+
+```text
+run_id                         | metric         | unit           | config_hash                                                      | dataset_fingerprint | evaluator_fingerprint | batch_size | n_attempted | n_ok | median | min | max
+-------------------------------+----------------+----------------+------------------------------------------------------------------+---------------------+-----------------------+------------+-------------+------+--------+-----+----
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | 297b1e2373ca8181a16df4aaa7b57e6f27a232e43aa658d798d97e9246dbe749 | null                | null                  | 32         |           3 |    3 |    320 | 300 | 350
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | db8be9fbe8f84ff4d2e61f9cf1bfa233deaabd47ecca04dbc7d065c66a175395 | null                | null                  | 1          |           3 |    3 |    102 | 100 | 105
+2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | null                | null                  | 8          |           3 |    2 |    205 | 200 | 210
+
+warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
+```
+
 The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
 blocks. The fixture in `data/v2/invalid.jsonl` covers one defect per line
 (missing field, wrong type, bad enum, malformed block, bad JSON). The identity fixture

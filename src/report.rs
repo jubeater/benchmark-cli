@@ -5,62 +5,81 @@ pub fn render(
     rejected: usize,
     superseded: usize,
     groups: &[GroupStats],
+    group_by: &[String],
 ) -> String {
     let mut out = format!(
         "Eval-schema v2 validation\nAccepted records: {accepted}\nRejected records: {rejected}\nSuperseded records: {superseded}\n"
     );
     if !groups.is_empty() {
         out.push('\n');
-        out.push_str(&render_table(groups));
+        out.push_str(&render_table(groups, group_by));
     }
     out
 }
-
-const NUMERIC_COL_START: usize = 6;
-const NUMERIC_COL_END: usize = 10;
 
 fn format_stat(val: Option<f64>) -> String {
     val.map(|v| v.to_string())
         .unwrap_or_else(|| "N/A".to_string())
 }
 
-pub fn render_table(groups: &[GroupStats]) -> String {
+fn format_config_value(value: Option<&serde_json::Value>) -> String {
+    match value {
+        None => "absent".to_string(),
+        Some(serde_json::Value::Null) => "null".to_string(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(other) => other.to_string(),
+    }
+}
+
+pub fn render_table(groups: &[GroupStats], group_by: &[String]) -> String {
     if groups.is_empty() {
         return String::new();
     }
 
-    let headers = [
-        "run_id",
-        "metric",
-        "unit",
-        "config_hash",
-        "dataset_fingerprint",
-        "evaluator_fingerprint",
-        "n_attempted",
-        "n_ok",
-        "median",
-        "min",
-        "max",
+    let mut headers: Vec<String> = vec![
+        "run_id".to_string(),
+        "metric".to_string(),
+        "unit".to_string(),
+        "config_hash".to_string(),
+        "dataset_fingerprint".to_string(),
+        "evaluator_fingerprint".to_string(),
     ];
+    for key in group_by {
+        headers.push(key.clone());
+    }
+    headers.extend([
+        "n_attempted".to_string(),
+        "n_ok".to_string(),
+        "median".to_string(),
+        "min".to_string(),
+        "max".to_string(),
+    ]);
 
-    let mut rows: Vec<[String; 11]> = Vec::new();
+    let mut rows: Vec<Vec<String>> = Vec::new();
     for g in groups {
-        rows.push([
+        let mut row = vec![
             g.key.run_id.clone(),
             g.key.metric.clone(),
             g.key.unit.to_string(),
             g.key.config_hash.clone(),
             g.key.dataset_fingerprint.clone(),
             g.key.evaluator_fingerprint.clone(),
+        ];
+        for key in group_by {
+            row.push(format_config_value(g.config.get(key)));
+        }
+        row.extend([
             g.n_attempted.to_string(),
             g.n_ok.to_string(),
             format_stat(g.median),
             format_stat(g.min),
             format_stat(g.max),
         ]);
+        rows.push(row);
     }
 
-    let mut widths: [usize; 11] = std::array::from_fn(|i| headers[i].len());
+    let num_cols = headers.len();
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
     for row in &rows {
         for (i, cell) in row.iter().enumerate() {
             widths[i] = widths[i].max(cell.len());
@@ -86,12 +105,13 @@ pub fn render_table(groups: &[GroupStats]) -> String {
     out.push_str(&divider_line);
     out.push('\n');
 
+    let numeric_col_start = num_cols - 5;
     for row in &rows {
         let line = row
             .iter()
             .enumerate()
             .map(|(i, cell)| {
-                if (NUMERIC_COL_START..=NUMERIC_COL_END).contains(&i) {
+                if i >= numeric_col_start {
                     format!("{:>w$}", cell, w = widths[i])
                 } else {
                     format!("{:<w$}", cell, w = widths[i])
@@ -140,6 +160,7 @@ mod tests {
                 dataset_fingerprint: "null".to_string(),
                 evaluator_fingerprint: "null".to_string(),
             },
+            config: serde_json::Map::new(),
             n_attempted: 3,
             n_ok: 3,
             median: Some(102.0),
@@ -157,6 +178,7 @@ mod tests {
                 dataset_fingerprint: "null".to_string(),
                 evaluator_fingerprint: "null".to_string(),
             },
+            config: serde_json::Map::new(),
             n_attempted: 3,
             n_ok: 2,
             median: Some(205.0),
@@ -174,6 +196,7 @@ mod tests {
                 dataset_fingerprint: "null".to_string(),
                 evaluator_fingerprint: "null".to_string(),
             },
+            config: serde_json::Map::new(),
             n_attempted: 3,
             n_ok: 0,
             median: None,
@@ -182,7 +205,7 @@ mod tests {
             warning: true,
         };
 
-        let rendered = render_table(&[group_ok, group_warn, group_null]);
+        let rendered = render_table(&[group_ok, group_warn, group_null], &[]);
         assert!(rendered.contains("run_id"));
         assert!(rendered.contains("n_attempted"));
         assert!(rendered.contains("median"));
@@ -191,6 +214,72 @@ mod tests {
         assert!(rendered.contains("N/A"));
         assert!(rendered.contains("fewer than 3 ok seeds"));
         assert!(rendered.contains("warning: group (run_id: run-1, metric: accuracy, config_hash: hash-warn) has fewer than 3 ok seeds (n_ok = 2)"));
+    }
+
+    #[test]
+    fn render_table_with_group_by_displays_columns_in_order() {
+        let mut config = serde_json::Map::new();
+        config.insert("batch_size".to_string(), serde_json::json!(8));
+        let group = GroupStats {
+            key: GroupKey {
+                run_id: "run-1".to_string(),
+                metric: "tokens_per_sec".to_string(),
+                unit: Unit::TokensPerSec,
+                config_hash: "hash-8".to_string(),
+                dataset_fingerprint: "null".to_string(),
+                evaluator_fingerprint: "null".to_string(),
+            },
+            config,
+            n_attempted: 3,
+            n_ok: 3,
+            median: Some(205.0),
+            min: Some(200.0),
+            max: Some(210.0),
+            warning: false,
+        };
+
+        let rendered = render_table(&[group], &["batch_size".to_string()]);
+        assert!(rendered.contains("batch_size"));
+        let header_line = rendered.lines().next().unwrap();
+        assert!(header_line.contains("evaluator_fingerprint | batch_size | n_attempted"));
+    }
+
+    #[test]
+    fn render_table_multiple_keys_renders_absent_distinct_from_null() {
+        let mut config = serde_json::Map::new();
+        config.insert("model".to_string(), serde_json::json!("gpt-4"));
+        config.insert("temperature".to_string(), serde_json::Value::Null);
+        // Note: "missing_key" is omitted from config
+
+        let group = GroupStats {
+            key: GroupKey {
+                run_id: "run-1".to_string(),
+                metric: "score".to_string(),
+                unit: Unit::Score,
+                config_hash: "hash-model".to_string(),
+                dataset_fingerprint: "null".to_string(),
+                evaluator_fingerprint: "null".to_string(),
+            },
+            config,
+            n_attempted: 3,
+            n_ok: 3,
+            median: Some(0.95),
+            min: Some(0.90),
+            max: Some(0.99),
+            warning: false,
+        };
+
+        let keys = vec![
+            "model".to_string(),
+            "temperature".to_string(),
+            "missing_key".to_string(),
+        ];
+        let rendered = render_table(&[group], &keys);
+        let header_line = rendered.lines().next().unwrap();
+        assert!(header_line.contains("evaluator_fingerprint | model | temperature | missing_key | n_attempted"));
+
+        let row_line = rendered.lines().nth(2).unwrap();
+        assert!(row_line.contains("gpt-4 | null        | absent      |"));
     }
 }
 

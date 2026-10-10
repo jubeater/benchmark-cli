@@ -12,6 +12,10 @@ struct Args {
     /// Path to the eval-schema v2 JSONL results
     #[arg(short, long)]
     input: String,
+
+    /// Show chosen config keys as columns in the group table
+    #[arg(long, value_delimiter = ',')]
+    group_by: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -60,12 +64,18 @@ fn run(args: Args) -> Result<i32, AppError> {
     }
     let rejected = rejections.len();
 
-    let output_string = if rejected == 0 {
-        let groups = aggregate_records(resolver.effective_measurements());
-        render(accepted, rejected, resolver.superseded_count(), &groups)
+    let groups = if rejected == 0 {
+        aggregate_records(resolver.effective_measurements())
     } else {
-        render(accepted, rejected, resolver.superseded_count(), &[])
+        Vec::new()
     };
+    let output_string = render(
+        accepted,
+        rejected,
+        resolver.superseded_count(),
+        &groups,
+        &args.group_by,
+    );
     print!("{output_string}");
 
     if rejected > 0 { Ok(1) } else { Ok(0) }

@@ -15,6 +15,7 @@ pub struct GroupKey {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupStats {
     pub key: GroupKey,
+    pub config: serde_json::Map<String, serde_json::Value>,
     pub n_attempted: usize,
     pub n_ok: usize,
     pub median: Option<f64>,
@@ -25,6 +26,7 @@ pub struct GroupStats {
 
 #[derive(Default)]
 struct GroupAccumulator {
+    config: serde_json::Map<String, serde_json::Value>,
     n_attempted: usize,
     n_ok: usize,
     ok_values: Vec<f64>,
@@ -50,6 +52,9 @@ pub fn aggregate_records<'a>(
         };
 
         let entry = groups.entry(key).or_default();
+        if entry.n_attempted == 0 {
+            entry.config = measurement.record.config.clone();
+        }
         entry.n_attempted += 1;
         if matches!(measurement.record.status, Status::Ok) {
             entry.n_ok += 1;
@@ -83,6 +88,7 @@ pub fn aggregate_records<'a>(
 
             GroupStats {
                 key,
+                config: acc.config,
                 n_attempted,
                 n_ok,
                 median,

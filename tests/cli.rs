@@ -2,20 +2,25 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn run_fixture(name: &str) -> Output {
+    run_fixture_with_args(name, &[])
+}
+
+fn run_fixture_with_args(name: &str, extra_args: &[&str]) -> Output {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("data/v2")
         .join(name);
-    Command::new(env!("CARGO_BIN_EXE_AI-log-analysis"))
-        .arg("--input")
-        .arg(fixture)
-        .output()
-        .expect("CLI should run")
+    run_input_with_args(&fixture, extra_args)
 }
 
-fn run_input(path: &str) -> Output {
+fn run_input(path: impl AsRef<Path>) -> Output {
+    run_input_with_args(path, &[])
+}
+
+fn run_input_with_args(path: impl AsRef<Path>, extra_args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_AI-log-analysis"))
         .arg("--input")
-        .arg(path)
+        .arg(path.as_ref())
+        .args(extra_args)
         .output()
         .expect("CLI should run")
 }
@@ -146,9 +151,67 @@ fn missing_input_file_exits_2_with_clear_message() {
 
     assert_eq!(output.status.code(), Some(2));
     let errors = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        errors.contains("failed to load input file"),
-        "got: {errors}"
-    );
+    assert!(errors.contains("failed to load input file"), "got: {errors}");
     assert!(errors.contains("does-not-exist.jsonl"), "got: {errors}");
+}
+
+#[test]
+fn sweep_fixture_with_group_by_batch_size_shows_column_and_same_statistics() {
+    let output = run_fixture_with_args("sweep.jsonl", &["--group-by", "batch_size"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with(
+        "Eval-schema v2 validation\nAccepted records: 10\nRejected records: 0\nSuperseded records: 0\n"
+    ));
+    assert!(output.stderr.is_empty());
+
+    // Header contains batch_size column between evaluator_fingerprint and n_attempted
+    let header_line = stdout.lines().nth(5).unwrap();
+    assert!(header_line.contains("evaluator_fingerprint | batch_size | n_attempted"));
+
+    // Check each row contains its batch_size value and the exact same statistics as without the flag
+    assert!(stdout.contains("32         |           3 |    3 |    320 | 300 | 350"));
+    assert!(stdout.contains("1          |           3 |    3 |    102 | 100 | 105"));
+    assert!(stdout.contains("8          |           3 |    2 |    205 | 200 | 210"));
+
+    // Warning is still printed
+    assert!(stdout.contains("warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)"));
+}
+
+#[test]
+fn group_by_supports_multiple_keys_and_renders_absent_and_null() {
+    let dir = std::env::temp_dir();
+    let temp_file = dir.join("test_group_by_multiple_keys.jsonl");
+    let line1 = serde_json::json!({
+        "schema_version": "2.0",
+        "record_id": "00000000-0000-4000-8000-000000000901",
+        "run_id": "run-test",
+        "project": "benchmark",
+        "timestamp": "2026-10-09T12:00:00Z",
+        "git_commit": "79e18e325900d533d0e90ccc6ec469a03ece1cb7",
+        "git_dirty": false,
+        "config": {"model": "llama-3", "adapter": null},
+        "seed": 1,
+        "metric": "score",
+        "unit": "score",
+        "value": 0.85,
+        "status": "ok",
+        "notes": "test"
+    });
+    std::fs::write(&temp_file, format!("{line1}\n")).unwrap();
+
+    let output = run_input_with_args(
+        &temp_file,
+        &["--group-by", "model", "--group-by", "adapter,unknown_key"],
+    );
+
+    let _ = std::fs::remove_file(temp_file);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let header_line = stdout.lines().nth(5).unwrap();
+    assert!(header_line.contains("evaluator_fingerprint | model   | adapter | unknown_key | n_attempted"));
+    let row_line = stdout.lines().nth(7).unwrap();
+    assert!(row_line.contains("llama-3 | null    | absent      |"));
 }
