@@ -30,10 +30,12 @@ fn identity_fixture_rejects_invalid_corrections_and_reports_superseded_records()
     let output = run_fixture("identity.jsonl");
 
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 3\nRejected records: 3\nSuperseded records: 1\n"
-    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with(
+        "Eval-schema v2 validation\nAccepted records: 3\nRejected records: 3\nSuperseded records: 1\n\n\
+         Incomplete result: statistics exclude rejected records (count: 3).\n\n"
+    ));
+    assert!(stdout.contains("2 |    2 |    0.8 | 0.7 | 0.9"));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
         "line 2: measurement_key: duplicate measurement (first seen on line 1)\n\
@@ -46,10 +48,12 @@ fn identity_fixture_rejects_invalid_corrections_and_reports_superseded_records()
 fn reused_record_id_fixture_rejects_reuse_and_accepts_the_originals_correction() {
     let output = run_fixture("record-id-reuse.jsonl");
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 2\nRejected records: 1\nSuperseded records: 1\n"
-    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with(
+        "Eval-schema v2 validation\nAccepted records: 2\nRejected records: 1\nSuperseded records: 1\n\n\
+         Incomplete result: statistics exclude rejected records (count: 1).\n\n"
+    ));
+    assert!(stdout.contains("1 |    1 |    0.9 | 0.9 | 0.9"));
     assert_eq!(
         String::from_utf8(output.stderr).unwrap(),
         "line 2: record_id: duplicate record_id (first seen on line 1)\n"
@@ -73,7 +77,20 @@ fn reused_record_id_fixture_rejects_reuse_and_accepts_the_originals_correction()
             "rejections": [
                 { "line": 2, "field": "record_id", "reason": "duplicate record_id (first seen on line 1)" }
             ],
-            "groups": []
+            "groups": [{
+                "run_id": "00000000-0000-4000-8000-000000000010",
+                "metric": "accuracy",
+                "unit": "ratio",
+                "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+                "dataset_fingerprint": "null",
+                "evaluator_fingerprint": "null",
+                "n_attempted": 1,
+                "n_ok": 1,
+                "median": 0.9,
+                "min": 0.9,
+                "max": 0.9,
+                "warning": true
+            }]
         })
     );
 }
@@ -103,10 +120,12 @@ fn parse_and_validation_failures_are_counted_as_rejected_records() {
     let output = run_fixture("mixed.jsonl");
 
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 1\nRejected records: 2\nSuperseded records: 0\n"
-    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with(
+        "Eval-schema v2 validation\nAccepted records: 1\nRejected records: 2\nSuperseded records: 0\n\n\
+         Incomplete result: statistics exclude rejected records (count: 2).\n\n"
+    ));
+    assert!(stdout.contains("1 |    0 |    N/A | N/A | N/A"));
     let errors = String::from_utf8(output.stderr).unwrap();
     assert!(errors.contains("line 2:"));
     assert!(errors.contains("line 3:"));
@@ -147,13 +166,128 @@ fn sweep_fixture_aggregates_groups_with_hand_computed_medians_and_warning() {
 }
 
 #[test]
+fn partial_sweep_json_keeps_accepted_groups_and_marks_the_result_incomplete() {
+    let args = ["--format", "json", "--group-by", "batch_size"];
+    let output = run_fixture_with_args("sweep-partial.jsonl", &args);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("line 11: <json>:")
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(parsed["accepted"], 10);
+    assert_eq!(parsed["rejected"], 1);
+    assert_eq!(parsed["superseded"], 0);
+    assert_eq!(parsed["complete"], false);
+    assert_eq!(parsed["rejections"].as_array().unwrap().len(), 1);
+    assert_eq!(parsed["rejections"][0]["line"], 11);
+    assert_eq!(parsed["rejections"][0]["field"], "<json>");
+
+    let groups = parsed["groups"].as_array().unwrap();
+    assert_eq!(groups.len(), 3);
+    // Sorted by config hash: batch sizes 32, 1, 8. Expected stats are worked
+    // out next to the clean sweep fixture, including the OOM and aggregate exclusions.
+    for (group, (batch_size, n_ok, median, min, max)) in groups.iter().zip([
+        (32, 3, 320.0, 300.0, 350.0),
+        (1, 3, 102.0, 100.0, 105.0),
+        (8, 2, 205.0, 200.0, 210.0),
+    ]) {
+        assert_eq!(group["group_by"]["batch_size"], batch_size);
+        assert_eq!(group["n_attempted"], 3);
+        assert_eq!(group["n_ok"], n_ok);
+        assert_eq!(group["median"], median);
+        assert_eq!(group["min"], min);
+        assert_eq!(group["max"], max);
+        assert_eq!(group["warning"], n_ok < 3);
+    }
+    let clean = run_fixture_with_args("sweep.jsonl", &args);
+    let clean: serde_json::Value = serde_json::from_slice(&clean.stdout).unwrap();
+    assert_eq!(parsed["groups"], clean["groups"]);
+}
+
+#[test]
+fn partial_sweep_text_shows_a_notice_above_the_unchanged_group_table() {
+    let output = run_fixture_with_args("sweep-partial.jsonl", &["--group-by", "batch_size"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("line 11: <json>:")
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let (summary, table) = stdout.split_once("run_id").unwrap();
+    assert_eq!(
+        summary,
+        "Eval-schema v2 validation\nAccepted records: 10\nRejected records: 1\nSuperseded records: 0\n\n\
+         Incomplete result: statistics exclude rejected records (count: 1).\n\n"
+    );
+    assert!(table.contains("32         |           3 |    3 |    320 | 300 | 350"));
+    assert!(table.contains("1          |           3 |    3 |    102 | 100 | 105"));
+    assert!(table.contains("8          |           3 |    2 |    205 | 200 | 210"));
+    assert_eq!(
+        table
+            .lines()
+            .filter(|line| line.starts_with("2026-10-09T14:00:00Z-sweep-001"))
+            .count(),
+        3
+    );
+
+    let clean = run_fixture_with_args("sweep.jsonl", &["--group-by", "batch_size"]);
+    let clean = String::from_utf8(clean.stdout).unwrap();
+    assert!(!clean.contains("Incomplete result"));
+    assert_eq!(table, clean.split_once("run_id").unwrap().1);
+}
+
+#[test]
+fn schema_rejected_correction_leaves_its_target_in_the_partial_statistics() {
+    let original_line = include_str!("../data/v2/identity.jsonl")
+        .lines()
+        .next()
+        .unwrap();
+    let mut correction: serde_json::Value = serde_json::from_str(original_line).unwrap();
+    correction["record_id"] = serde_json::json!("invalid-correction");
+    correction["supersedes_record_id"] = serde_json::json!("identity-original");
+    correction["unit"] = serde_json::json!("kilograms");
+    correction["value"] = serde_json::json!(0.1);
+    let temp_file = std::env::temp_dir().join(format!(
+        "benchmark-cli-rejected-correction-{}.jsonl",
+        std::process::id()
+    ));
+    std::fs::write(&temp_file, format!("{original_line}\n{correction}\n")).unwrap();
+    let output = run_input_with_args(&temp_file, &["--format", "json"]);
+    std::fs::remove_file(temp_file).unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("line 2: unit:")
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(parsed["accepted"], 1);
+    assert_eq!(parsed["rejected"], 1);
+    assert_eq!(parsed["superseded"], 0);
+    assert_eq!(parsed["complete"], false);
+    assert_eq!(parsed["rejections"][0]["field"], "unit");
+    let groups = parsed["groups"].as_array().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0]["n_attempted"], 1);
+    assert_eq!(groups[0]["n_ok"], 1);
+    assert_eq!(groups[0]["median"], 0.95);
+    assert_eq!(groups[0]["min"], 0.95);
+    assert_eq!(groups[0]["max"], 0.95);
+}
+
+#[test]
 fn invalid_records_report_line_field_and_reason() {
     let output = run_fixture("invalid.jsonl");
 
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "Eval-schema v2 validation\nAccepted records: 0\nRejected records: 11\nSuperseded records: 0\n"
+        "Eval-schema v2 validation\nAccepted records: 0\nRejected records: 11\nSuperseded records: 0\n\n\
+         Incomplete result: statistics exclude rejected records (count: 11).\n"
     );
     let errors = String::from_utf8(output.stderr).unwrap();
     let lines: Vec<&str> = errors.lines().collect();
@@ -305,7 +439,20 @@ fn identity_fixture_json_snapshot_reports_corrections_and_rejections() {
                 { "line": 4, "field": "supersedes_record_id", "reason": "dangling reference: record 'missing-record' was not accepted earlier" },
                 { "line": 6, "field": "supersedes_record_id", "reason": "target record 'identity-original' has a different measurement_key" }
             ],
-            "groups": []
+            "groups": [{
+                "run_id": "00000000-0000-4000-8000-000000000010",
+                "metric": "accuracy",
+                "unit": "ratio",
+                "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+                "dataset_fingerprint": "null",
+                "evaluator_fingerprint": "null",
+                "n_attempted": 2,
+                "n_ok": 2,
+                "median": 0.8,
+                "min": 0.7,
+                "max": 0.9,
+                "warning": true
+            }]
         })
     );
 }

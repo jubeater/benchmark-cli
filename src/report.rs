@@ -99,6 +99,11 @@ pub fn render(
     let mut out = format!(
         "Eval-schema v2 validation\nAccepted records: {accepted}\nRejected records: {rejected}\nSuperseded records: {superseded}\n"
     );
+    if rejected > 0 {
+        out.push_str(&format!(
+            "\nIncomplete result: statistics exclude rejected records (count: {rejected}).\n"
+        ));
+    }
     if !groups.is_empty() {
         out.push('\n');
         out.push_str(&render_table(groups, group_by));
@@ -371,4 +376,3 @@ mod tests {
         assert!(row_line.contains("gpt-4 | null        | absent      |"));
     }
 }
-

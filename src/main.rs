@@ -77,11 +77,7 @@ fn run(args: Args) -> Result<i32, AppError> {
     }
     let rejected = rejections.len();
 
-    let groups = if rejected == 0 {
-        aggregate_records(resolver.effective_measurements())
-    } else {
-        Vec::new()
-    };
+    let groups = aggregate_records(resolver.effective_measurements());
     let output_string = if args.format == Format::Json {
         report::render_json(
             accepted,

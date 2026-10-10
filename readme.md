@@ -51,8 +51,9 @@ measurement keys or record IDs, or become valid correction targets.
 
 Records are resolved in file order in one pass. Corrections replace the effective
 record for their measurement; chains resolve to the last accepted correction.
-The resolver exposes exactly one effective record per measurement key for future
-aggregation. Accepted counts include superseded records; the superseded count
+The resolver supplies exactly one effective record per measurement key for
+aggregation. A rejected correction leaves its target's effective record unchanged.
+Accepted counts include superseded records; the superseded count
 reports how many accepted records were displaced by corrections.
 
 When records are aggregated across seeds, effective records are grouped by
@@ -72,6 +73,15 @@ run_id                         | metric         | unit           | config_hash  
 2026-10-09T14:00:00Z-sweep-001 | tokens_per_sec | tokens_per_sec | fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf | null                | null                  |           3 |    2 |    205 | 200 | 210
 
 warning: group (run_id: 2026-10-09T14:00:00Z-sweep-001, metric: tokens_per_sec, config_hash: fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf) has fewer than 3 ok seeds (n_ok = 2)
+```
+
+If any records are rejected, the CLI still shows statistics from accepted,
+effective records. Rejected records never enter aggregation. The result is
+incomplete and exits with code 1, with each rejection reported on stderr. Text
+output shows a notice above the group table (for example, with one rejection):
+
+```text
+Incomplete result: statistics exclude rejected records (count: 1).
 ```
 
 Passing `--group-by <key>[,<key>...]` shows the chosen config keys as columns in
@@ -100,11 +110,14 @@ exit codes are unchanged. The JSON shape:
   the shape of this output changes.
 - `accepted`, `rejected`, `superseded` — the same counts as the text header.
 - `complete` — `false` whenever any record was rejected. It means "no input was
-  rejected", not "no known limitations".
+  rejected", not "no known limitations". Accepted unsuccessful measurements,
+  excluded aggregate records, and fewer-than-3-seeds warnings do not make it false.
 - `rejections` — one object per rejected record, sorted by line: `line`,
   `field` (`<json>` for unparseable lines), and `reason`.
-- `groups` — the aggregate groups, empty when any record was rejected (as in
-  text mode). Each group carries the key fields (`run_id`, `metric`, `unit`,
+- `groups` — the aggregate groups from accepted, effective records, including
+  partial results when `complete` is `false`. Groups are empty only when there
+  are no effective records eligible for aggregation. Each group carries the key
+  fields (`run_id`, `metric`, `unit`,
   `config_hash`, `dataset_fingerprint`, `evaluator_fingerprint`), `n_attempted`,
   `n_ok`, `median` / `min` / `max` (`null` when `n_ok = 0`), and the
   fewer-than-3-seeds warning as `warning`. With `--group-by`, each group also
@@ -139,7 +152,22 @@ cargo run -- --input data/v2/identity.jsonl --format json
       "reason": "target record 'identity-original' has a different measurement_key"
     }
   ],
-  "groups": []
+  "groups": [
+    {
+      "run_id": "00000000-0000-4000-8000-000000000010",
+      "metric": "accuracy",
+      "unit": "ratio",
+      "config_hash": "fc046d91d2e2a564a21b50cbdc73ff4cfe50221c35af239573f263c5b469a5cf",
+      "dataset_fingerprint": "null",
+      "evaluator_fingerprint": "null",
+      "n_attempted": 2,
+      "n_ok": 2,
+      "median": 0.8,
+      "min": 0.7,
+      "max": 0.9,
+      "warning": true
+    }
+  ]
 }
 ```
 
@@ -175,6 +203,9 @@ covers a reused record ID with a different seed followed by a valid correction
 of the original. The sweep fixture in `data/v2/sweep.jsonl` covers
 a batch size sweep across seeds with an OOM measurement, an aggregate record, and hand-computed
 medians. Expected outcomes are documented in `data/v2/README`.
+The `sweep-partial.jsonl` fixture adds one malformed line to the sweep: the
+same three groups and medians are shown, with a rejection notice in text mode
+and `complete: false` in JSON mode, and exit code 1.
 
 Run the checks with:
 
