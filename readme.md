@@ -20,13 +20,15 @@ Rejected records: 0
 
 An unsuccessful measurement (for example `status: "oom"`) can still be an
 accepted record. The counts describe record validity, not measurement success.
-A fully valid file exits with code 0. Rejected records are counted, and input
-errors are printed to stderr. Detailed field diagnostics and rejection exit
-codes are planned in ticket #2; the additional pinned schema rules are planned
-in ticket #3.
+A fully valid file exits with code 0. Each rejected record is reported on
+stderr as `line N: <field>: <reason>` (for unparseable JSON the field is
+`<json>`); any rejection exits with code 1, while a missing input file exits
+with code 2. The additional pinned schema rules are planned in ticket #3.
 
 The fixture in `data/v2/valid.jsonl` covers absent, populated, and null optional
-blocks. Its expected outcome is documented in `data/v2/README`.
+blocks. The fixture in `data/v2/invalid.jsonl` covers one defect per line
+(missing field, wrong type, bad enum, malformed block, bad JSON). Expected
+outcomes are documented in `data/v2/README`.
 
 Run the checks with:
 

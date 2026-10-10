@@ -15,53 +15,62 @@ struct Args {
 
 #[derive(Debug)]
 enum AppError {
-    Input(io::Error),
+    Input { path: String, source: io::Error },
 }
 
 impl Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppError::Input(e) => {
-                write!(f, "failed to load input file: {}", e)
+            AppError::Input { path, source } => {
+                write!(f, "failed to load input file '{path}': {source}")
             }
         }
     }
 }
 
-impl From<io::Error> for AppError {
-    fn from(value: io::Error) -> Self {
-        AppError::Input(value)
-    }
-}
-
-fn run(args: Args) -> Result<(), AppError> {
-    let parsed_result = parse_lines(&args.input)?;
-    for error in &parsed_result.errors {
-        eprintln!("Warning: {error}");
-    }
-
+fn run(args: Args) -> Result<i32, AppError> {
+    let parsed_result = parse_lines(&args.input).map_err(|source| AppError::Input {
+        path: args.input.clone(),
+        source,
+    })?;
     let mut accepted = 0;
-    let mut rejected = parsed_result.errors.len();
+    let mut rejections: Vec<(usize, String)> = parsed_result
+        .errors
+        .iter()
+        .map(|error| {
+            (
+                error.line_number,
+                format!("line {}: <json>: {}", error.line_number, error.source_error),
+            )
+        })
+        .collect();
     for record in parsed_result.records {
         match validate_record(record) {
             Ok(_) => accepted += 1,
             Err(error) => {
-                rejected += 1;
-                eprintln!("Warning: line {}: {:?}", error.line, error.error_type);
+                rejections.push((error.line, error.to_string()));
             }
         }
     }
+    rejections.sort_by_key(|(line, _)| *line);
+    for (_, message) in &rejections {
+        eprintln!("{message}");
+    }
+    let rejected = rejections.len();
 
     let output_string = render(accepted, rejected);
-    print!("{}", output_string);
+    print!("{output_string}");
 
-    Ok(())
+    if rejected > 0 { Ok(1) } else { Ok(0) }
 }
 fn main() {
     let args = Args::parse();
 
-    if let Err(e) = run(args) {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
+    match run(args) {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(2);
+        }
     }
 }
