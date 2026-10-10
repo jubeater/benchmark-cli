@@ -8,6 +8,19 @@ Line 3: null seed and optional blocks, status oom with null value. An unsuccessf
 Line 4: valid correction of line 1, replaces it in the effective set.
         Three effective records remain; line 1 counts as superseded.
 
+blank-lines.jsonl — 4 accepted records, 0 rejected records, 1 superseded record, exit code 0.
+The same records as valid.jsonl appear on physical lines 3, 6, 9, and 12.
+Empty lines and lines containing spaces and tabs precede, separate, and follow
+the records. They are skipped; both output formats match valid.jsonl exactly.
+
+blank-lines-invalid.jsonl — 1 accepted record, 2 rejected records, 0 superseded records, exit code 1.
+The same records as mixed.jsonl appear on physical lines 3, 6, and 9, with
+empty and whitespace-only lines at the start, in the middle, and at the end.
+Line 3 is accepted; line 6 is rejected on schema_version (missing required
+field), and line 9 is rejected on <json> (malformed JSON). Both output formats
+report the physical line numbers, and only the two defective records count
+as rejections.
+
 invalid.jsonl — 0 accepted records, 11 rejected records, 0 superseded records, exit code 1.
 Each line has exactly one defect; each produces exactly one rejection on
 stderr as `line N: <field>: <reason>`.

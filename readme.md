@@ -9,6 +9,9 @@ cargo run -- --input data/v2/valid.jsonl
 
 For your own results, pass `--input path/to/results.jsonl` (or `-i`).
 
+Empty and whitespace-only lines are skipped. They do not count as accepted or
+rejected records; reported line numbers still refer to physical lines in the file.
+
 The CLI parses each line, checks records with the v2 validator, and prints a
 summary:
 

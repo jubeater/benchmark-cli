@@ -26,6 +26,63 @@ fn run_input_with_args(path: impl AsRef<Path>, extra_args: &[&str]) -> Output {
 }
 
 #[test]
+fn blank_lines_are_skipped_in_both_output_formats() {
+    for format in ["text", "json"] {
+        let output = run_fixture_with_args("blank-lines.jsonl", &["--format", format]);
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stderr.is_empty());
+
+        if format == "json" {
+            let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(parsed["accepted"], 4);
+            assert_eq!(parsed["rejected"], 0);
+            assert_eq!(parsed["superseded"], 1);
+            assert_eq!(parsed["complete"], true);
+            assert_eq!(parsed["rejections"], serde_json::json!([]));
+        } else {
+            let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+            assert!(stdout.starts_with(
+                "Eval-schema v2 validation\nAccepted records: 4\nRejected records: 0\nSuperseded records: 1\n"
+            ));
+            assert!(!stdout.contains("Incomplete result"));
+        }
+
+        let clean = run_fixture_with_args("valid.jsonl", &["--format", format]);
+        assert_eq!(clean.status.code(), Some(0));
+        assert_eq!(output.stdout, clean.stdout);
+    }
+}
+
+#[test]
+fn rejections_after_blank_lines_report_physical_line_numbers() {
+    for format in ["text", "json"] {
+        let output = run_fixture_with_args("blank-lines-invalid.jsonl", &["--format", format]);
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let errors: Vec<_> = stderr.lines().collect();
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0], "line 6: schema_version: missing required field");
+        assert!(errors[1].starts_with("line 9: <json>:"));
+
+        if format == "json" {
+            let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(parsed["accepted"], 1);
+            assert_eq!(parsed["rejected"], 2);
+            assert_eq!(parsed["complete"], false);
+            assert_eq!(parsed["rejections"][0]["line"], 6);
+            assert_eq!(parsed["rejections"][0]["field"], "schema_version");
+            assert_eq!(parsed["rejections"][1]["line"], 9);
+            assert_eq!(parsed["rejections"][1]["field"], "<json>");
+        } else {
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert!(stdout.starts_with(
+                "Eval-schema v2 validation\nAccepted records: 1\nRejected records: 2\nSuperseded records: 0\n"
+            ));
+        }
+    }
+}
+
+#[test]
 fn identity_fixture_rejects_invalid_corrections_and_reports_superseded_records() {
     let output = run_fixture("identity.jsonl");
 

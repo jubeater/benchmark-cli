@@ -65,6 +65,9 @@ pub fn parse_lines(file_path: &str) -> Result<ParseResult, io::Error> {
 
     for (line_cnt, line) in (1..).zip(reader.lines()) {
         let str_line = line?;
+        if str_line.trim().is_empty() {
+            continue;
+        }
 
         match parse_line(&str_line, line_cnt) {
             Ok(input_record) => {
@@ -116,6 +119,40 @@ mod tests {
         let parsed = result.unwrap();
         assert_eq!(parsed.records.len(), 4);
         assert!(parsed.errors.is_empty());
+    }
+
+    #[test]
+    fn parse_lines_skips_blank_lines_and_preserves_physical_record_lines() {
+        let parsed = parse_lines(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/data/v2/blank-lines.jsonl"
+        ))
+        .unwrap();
+
+        assert!(parsed.errors.is_empty(), "got: {:?}", parsed.errors);
+        assert_eq!(
+            parsed
+                .records
+                .iter()
+                .map(|record| record.line)
+                .collect::<Vec<_>>(),
+            vec![3, 6, 9, 12]
+        );
+    }
+
+    #[test]
+    fn parse_lines_reports_physical_error_lines_after_blank_lines() {
+        let parsed = parse_lines(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/data/v2/blank-lines-invalid.jsonl"
+        ))
+        .unwrap();
+
+        assert_eq!(parsed.records.len(), 2);
+        assert_eq!(parsed.records[0].line, 3);
+        assert_eq!(parsed.records[1].line, 6);
+        assert_eq!(parsed.errors.len(), 1);
+        assert_eq!(parsed.errors[0].line_number, 9);
     }
 
     #[test]
